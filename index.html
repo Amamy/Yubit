@@ -1,11 +1,216 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yubit</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/examples/jsm/loaders/GLTFLoader": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+          "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="main.js"></script>
+    <link rel="stylesheet" href="index.css" />
+    <title>Yubit - メイン画面</title>
   </head>
   <body>
-    Yubit here.
+    <div class="app-container">
+      <!-- ヘッダー -->
+      <header class="header">
+        <div class="app-title">Yubit</div>
+        <div class="header-actions">
+          <button class="history-button" type="button">学習履歴</button>
+          <button class="reset-button" type="button">リセット</button>
+        </div>
+      </header>
+
+      <!-- ステータスバー -->
+      <div class="stats-bar">
+        <div class="accuracy-info">
+          正答率: <span class="accuracy-rate">5 / 10</span>
+        </div>
+        <div class="remaining-info">
+          カード: <span class="remaining-words">10 / 296</span>
+        </div>
+      </div>
+
+      <!-- プレイヤーエリア -->
+      <div class="player-wrapper">
+        <canvas class="player">
+          <!-- <p>
+            3Dアニメーション表示領域<br /><small
+              >（マウスドラッグで回転・拡大）</small
+            >
+          </p> -->
+        </canvas>
+        <div class="subtitle-overlay" aria-live="polite">
+          <p class="subtitle-text"></p>
+        </div>
+      </div>
+
+      <div class="review-button-container">
+        <button class="review-button">もう一度見る (見直し)</button>
+      </div>
+
+      <!-- 設定パネル -->
+      <div class="settings-panel">
+        <div class="setting-row">
+          <div class="setting-group">
+            文字数:
+            <input
+              type="number"
+              class="word-length-min number-input"
+              value="2"
+              min="1"
+              max="9"
+            />
+            〜
+            <input
+              type="number"
+              class="word-length-max number-input"
+              value="5"
+              min="1"
+              max="9"
+            />
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" class="single-char-mode" />
+            １文字モード
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-group">
+            速度:
+            <select class="play-speed select-input">
+              <option value="0.5">x0.5</option>
+              <option value="0.75">x0.75</option>
+              <option value="1.0" selected>x1.0</option>
+              <option value="1.25">x1.25</option>
+              <option value="1.5">x1.5</option>
+              <option value="2.0">x2.0</option>
+              <option value="3.0">x3.0</option>
+            </select>
+            間:
+            <select class="play-interval select-input">
+              <option value="0.5">ながい</option>
+              <option value="0.2" selected>ややながい</option>
+              <option value="0">みじかい</option>
+            </select>
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" class="flip-mode" />
+            左右反転
+          </label>
+        </div>
+      </div>
+
+      <!-- 回答アクションエリア -->
+      <div class="action-area">
+        <div class="input-group">
+          <input
+            type="text"
+            class="answer-input"
+            placeholder="読み取った文字を入力"
+          />
+          <button class="answer-button">回答</button>
+        </div>
+        <button class="end-button">練習を終了して評価へ</button>
+      </div>
+    </div>
+
+    <div
+      class="history-dialog dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="history-title"
+      hidden
+    >
+      <div class="history-panel panel">
+        <h1 id="history-title">これまでの学習履歴</h1>
+        <div class="history-grid">
+          <div class="history-item">
+            <span>総学習回数</span>
+            <strong class="history-sessions">0回</strong>
+          </div>
+          <div class="history-item">
+            <span>総単語数</span>
+            <strong class="history-words">0個</strong>
+          </div>
+          <div class="history-item">
+            <span>総正解率</span>
+            <strong class="history-accuracy">0.00%</strong>
+          </div>
+          <div class="history-item">
+            <span>総学習時間</span>
+            <strong class="history-duration">0時間00分00秒</strong>
+          </div>
+          <div class="history-item">
+            <span>総文字数</span>
+            <strong class="history-characters">0字</strong>
+          </div>
+          <div class="history-item">
+            <span>総見直し回数</span>
+            <strong class="history-reviews">0回</strong>
+          </div>
+        </div>
+        <p class="history-empty" hidden>まだ学習履歴がありません。</p>
+        <button class="history-close-button close-button" type="button">
+          閉じる
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="evaluation-dialog dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="evaluation-title"
+      hidden
+    >
+      <div class="evaluation-panel panel">
+        <h1 id="evaluation-title">練習の評価</h1>
+        <div class="evaluation-grid">
+          <div class="evaluation-item">
+            <span>回答した単語数</span>
+            <strong class="evaluation-answered-words">0</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>正解した単語数</span>
+            <strong class="evaluation-correct-words">0</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>正解率</span>
+            <strong class="evaluation-accuracy">0.00%</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>所要時間</span>
+            <strong class="evaluation-duration">0分00秒</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>文字数合計</span>
+            <strong class="evaluation-characters">0字</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>1文字あたりの所要時間</span>
+            <strong class="evaluation-time-per-character">0.0秒</strong>
+          </div>
+          <div class="evaluation-item">
+            <span>見直した回数</span>
+            <strong class="evaluation-reviews">0回</strong>
+          </div>
+        </div>
+        <p>　</p>
+        <p class="evaluation-grade">
+          あなたは <strong class="evaluation-grade-value">初級</strong> です
+        </p>
+        <button class="evaluation-close-button close-button" type="button">
+          閉じる
+        </button>
+      </div>
+    </div>
   </body>
 </html>
