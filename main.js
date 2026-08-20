@@ -56,19 +56,18 @@ const state = {
     onWordIndexChanged() {
         console.log(`単語番号が ${this._index} に変更されました`);
 
-        const answerInput = document.querySelector('.answer-input');
-        if (answerInput) {
-            answerInput.placeholder = state.currentWords[state.currentWordIndex];
-        }
-
         const remainingWords = document.querySelector('.remaining-words');
         if (remainingWords) {
-            remainingWords.textContent = `${state.currentWordIndex + 1} / ${state.currentWords.length}`;
+            remainingWords.textContent = (state.currentWords.length > 0) ? `${state.currentWordIndex + 1} / ${state.currentWords.length}` : '0 / 0';
         }
     },
 
     get currentWord() {
-        return this._currentWords[this._index];
+        if (this._index < 0 || this._index >= this._currentWords.length) {
+            return undefined;
+        } else {
+            return this._currentWords[this._index];
+        }
     },
 
     _step: 0, // 初期状態でSteps.Initとする
@@ -261,7 +260,9 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         });
         historyCloseButton.addEventListener('click', () => {
             historyDialog.hidden = true;
-            document.querySelector('.answer-input')?.focus();
+            setTimeout(() => {
+                document.querySelector('.answer-input')?.focus();
+            }, 0);
         });
     }
 
@@ -315,11 +316,14 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const minLengthInput = document.querySelector('.word-length-min');
     const maxLengthInput = document.querySelector('.word-length-max');
     if (minLengthInput && maxLengthInput) {
-        const handler = function () {
+        const handler = function (e) {
             const minLength = parseInt(minLengthInput.value, 10);
             const maxLength = parseInt(maxLengthInput.value, 10);
-            if (minLength > maxLength) {
+            if (e.target == minLengthInput && minLength > maxLength) {
                 maxLengthInput.value = minLength; // 最大値を最小値に合わせる
+            }
+            if (e.target == maxLengthInput && maxLength < minLength) {
+                minLengthInput.value = maxLength; // 最小値を最大値に合わせる
             }
             if (!isNaN(minLength) && !isNaN(maxLength)) {
                 console.log(`文字数の範囲が設定されました: ${minLength} - ${maxLength}`);
@@ -443,6 +447,7 @@ function filterWordsByLength(words, minLength, maxLength) {
 function submitAnswer() {
     const answerInput = document.querySelector('.answer-input');
     const subtitleText = document.querySelector('.subtitle-text');
+    console.log(`submitAnswer called. Current step: ${state.step}, Current word: ${state.currentWord}`);
     if (answerInput) {
         switch (state.step) {
             case Steps.Init:
@@ -452,7 +457,7 @@ function submitAnswer() {
             case Steps.Writing:
                 const inputWord = answerInput.value.trim().hiraganaToKatakana();
 
-                if (inputWord === '') {
+                if (inputWord === '' || state.currentWord === undefined) {
                     return; // 空の回答は無視
                 }
 
@@ -483,8 +488,14 @@ function submitAnswer() {
                 break;
             case Steps.Submitted:
                 // 次の単語を再生するためにキューに追加
-                state.currentWordIndex = (state.currentWordIndex + 1) % state.currentWords.length;
-                playerInstance.enqueue(state.currentWords[state.currentWordIndex]);
+                if (state.currentWordIndex >= state.currentWords.length - 1) {
+                    console.log('すべての単語を回答しました。セッションを終了します。');
+                    finishSession(); // セッションを終了する
+                    return;
+                } else {
+                    state.currentWordIndex++; // 次の単語に進む
+                    playerInstance.enqueue(state.currentWords[state.currentWordIndex]);
+                }
 
                 state.step = Steps.Init; // ステップを初期化
                 break;
@@ -493,6 +504,10 @@ function submitAnswer() {
 }
 
 function review() {
+    if (state.currentWords.length == 0) {
+        return;
+    }
+
     // 見直し処理
     state.incrementReviewCount(); // 見直し回数を増やす
     playerInstance.enqueue(state.currentWords[state.currentWordIndex]); // 現在の単語を再生するためにキューに追加
@@ -537,7 +552,9 @@ function finishSession() {
     const evaluationDialog = document.querySelector('.evaluation-dialog');
     if (evaluationDialog) {
         evaluationDialog.hidden = false;
-        document.querySelector('.evaluation-close-button')?.focus();
+        setTimeout(() => {
+            document.querySelector('.evaluation-close-button')?.focus();
+        }, 0);
     }
 
     // LocalStorageに結果を保存する

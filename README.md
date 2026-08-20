@@ -17,4 +17,5 @@ I would like to thank everyone who has developed and made available these wonder
 
 ## Change Log
 
-- [2026-08-19] The initial release for review and testing.
+- [2026-08-19] r1: The initial release for review and testing.
+- [2026-08-20] r2: Bug fixes.
