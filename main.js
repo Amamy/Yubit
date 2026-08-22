@@ -38,36 +38,15 @@ const state = {
 
     onWordListChanged() {
         console.log(`単語リストが更新されました (${this._currentWords.length} 件)`);
-        // 必要に応じてUIの更新などを行う
-    },
-
-    _index: -1,
-
-    get currentWordIndex() {
-        return this._index;
-    },
-
-    set currentWordIndex(newIndex) {
-        this._index = newIndex;
-        // 更新時の処理を実行
-        this.onWordIndexChanged();
-    },
-
-    onWordIndexChanged() {
-        console.log(`単語番号が ${this._index} に変更されました`);
 
         const remainingWords = document.querySelector('.remaining-words');
         if (remainingWords) {
-            remainingWords.textContent = (state.currentWords.length > 0) ? `${state.currentWordIndex + 1} / ${state.currentWords.length}` : '0 / 0';
+            remainingWords.textContent = state.currentWords.length;
         }
     },
 
     get currentWord() {
-        if (this._index < 0 || this._index >= this._currentWords.length) {
-            return null;
-        } else {
-            return this._currentWords[this._index];
-        }
+        return this._currentWords.peek();
     },
 
     _step: 0, // 初期状態でSteps.Initとする
@@ -155,6 +134,12 @@ const state = {
             }
         }
         return null;
+    },
+
+    _answeredWords: new Set(), // 回答済みの単語を保持する
+
+    get answeredWords() {
+        return this._answeredWords;
     }
 };
 
@@ -287,48 +272,26 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         }
     }
 
-    // １文字モード
-    const singleCharModeCheckbox = document.querySelector('.single-char-mode');
-    if (singleCharModeCheckbox) {
-        singleCharModeCheckbox.addEventListener('change', () => {
-            console.log(`1文字モードが${singleCharModeCheckbox.checked ? '有効' : '無効'}になりました`);
-            if (singleCharModeCheckbox.checked) {
-                // state.currentWords = filterWordsByLength(state.allWords, 1, 1);
-                if (minLengthInput) minLengthInput.disabled = true;
-                if (maxLengthInput) maxLengthInput.disabled = true;
-            } else {
-                const minLength = parseInt(minLengthInput.value, 10);
-                const maxLength = parseInt(maxLengthInput.value, 10);
-                // state.currentWords = filterWordsByLength(state.allWords, minLength, maxLength);
-                if (minLengthInput) minLengthInput.disabled = false;
-                if (maxLengthInput) maxLengthInput.disabled = false;
-            }
-            // reset();
-            saveSettings();
-        });
-        if (settings.singleCharMode == true) {
-            singleCharModeCheckbox.checked = true;
-            singleCharModeCheckbox.dispatchEvent(new Event('change')); // 初期状態を反映するためにイベントを発火
-        }
-    }
-
     // 文字数(最小/最大)
     const minLengthInput = document.querySelector('.word-length-min');
     const maxLengthInput = document.querySelector('.word-length-max');
     if (minLengthInput && maxLengthInput) {
         const handler = function (e) {
-            const minLength = parseInt(minLengthInput.value, 10);
-            const maxLength = parseInt(maxLengthInput.value, 10);
+            let minLength = parseInt(minLengthInput.value, 10);
+            let maxLength = parseInt(maxLengthInput.value, 10);
             if (e.target == minLengthInput && minLength > maxLength) {
                 maxLengthInput.value = minLength; // 最大値を最小値に合わせる
+                maxLength = minLength;
             }
             if (e.target == maxLengthInput && maxLength < minLength) {
                 minLengthInput.value = maxLength; // 最小値を最大値に合わせる
+                minLength = maxLength;
             }
             if (!isNaN(minLength) && !isNaN(maxLength)) {
                 console.log(`文字数の範囲が設定されました: ${minLength} - ${maxLength}`);
-                // state.currentWords = filterWordsByLength(state.allWords, minLength, maxLength);
-                // reset();
+                const temp = filterWordsByLength(state.allWords, minLength, maxLength);
+                state.currentWords = filterAnsweredWords(temp);
+                state.currentWords.shuffle();
                 saveSettings();
             } else {
                 console.error('無効な文字数の範囲です。');
@@ -407,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         const minLength = parseInt(minLengthInput.value, 10);
         const maxLength = parseInt(maxLengthInput.value, 10);
         state.currentWords = filterWordsByLength(state.allWords, minLength, maxLength);
-        state.currentWordIndex = 0;
+        state.currentWords.shuffle();
     }
 });
 
@@ -423,7 +386,6 @@ async function loadWordList() {
         if (Array.isArray(data.words)) {
             state.allWords.length = 0; // Clear the existing list
             state.allWords.push(...data.words); // Populate with new words
-            state.allWords.shuffle(); // Shuffle the word list
         } else {
             console.error('Invalid word list format in JSON.');
         }
@@ -440,8 +402,19 @@ Array.prototype.shuffle = function () {
     return this;
 };
 
+Array.prototype.peek = function () {
+    if (this.length === 0) {
+        return undefined;
+    }
+    return this[this.length - 1];
+};
+
 function filterWordsByLength(words, minLength, maxLength) {
     return words.filter(word => word.length >= minLength && word.length <= maxLength);
+}
+
+function filterAnsweredWords(words) {
+    return words.filter(word => !state.answeredWords.has(word));
 }
 
 function submitAnswer() {
@@ -462,6 +435,7 @@ function submitAnswer() {
                 }
 
                 state.addAnsweredCharacters(state.currentWord.length);
+                state.answeredWords.add(state.currentWord); // 回答済みの単語をセットに追加
 
                 // 正誤判定
                 if (inputWord == state.currentWord) {
@@ -488,15 +462,16 @@ function submitAnswer() {
                 break;
             case Steps.Submitted:
                 playerInstance.clearQueue(); // キューをクリアする
+                state.currentWords.pop(); // 回答済みの単語をリストから削除する
+                state.onWordListChanged(); // 単語リストが更新されたことを通知する
 
                 // 次の単語を再生するためにキューに追加
-                if (state.currentWordIndex >= state.currentWords.length - 1) {
+                if (state.currentWord === undefined) {
                     console.log('すべての単語を回答しました。セッションを終了します。');
                     finishSession(); // セッションを終了する
                     return;
                 } else {
-                    state.currentWordIndex++; // 次の単語に進む
-                    playerInstance.enqueue(state.currentWords[state.currentWordIndex]);
+                    playerInstance.enqueue(state.currentWord);
                 }
 
                 state.step = Steps.Init; // ステップを初期化
@@ -520,7 +495,6 @@ function review() {
 
 function reset() {
     state.currentWords.shuffle(); // 単語リストをシャッフルする
-    state.currentWordIndex = 0; // インデックスをリセットする
     state.step = Steps.Init; // ステップを初期化する
     state._correctCount = 0;
     state._incorrectCount = 0;
@@ -577,6 +551,8 @@ function finishSession() {
     let sessionResults = JSON.parse(localStorage.getItem('sessionResults')) || [];
     sessionResults.push(sessionResult);
     localStorage.setItem('sessionResults', JSON.stringify(sessionResults));
+
+    state.answeredWords.clear(); // 回答済みの単語をリセットする
 }
 
 function renderLearningHistory() {
@@ -620,7 +596,6 @@ function saveSettings() {
     const settings = {
         wordLengthMin: document.querySelector('.word-length-min')?.value || '',
         wordLengthMax: document.querySelector('.word-length-max')?.value || '',
-        singleCharMode: document.querySelector('.single-char-mode')?.checked || false,
         playSpeed: document.querySelector('.play-speed')?.value || '1.0',
         playInterval: document.querySelector('.play-interval')?.value || '0',
         flipMode: document.querySelector('.flip-mode')?.checked || false

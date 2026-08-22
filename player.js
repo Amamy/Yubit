@@ -344,7 +344,6 @@ export class Player extends EventTarget {
  * @param {number} duration - 新しい再生時間(s)
  */
 function setClipDuration(clip, duration) {
-    console.log(`クリップの再生時間を拡張: ${clip.name} (元の時間: ${clip.duration}s, 新しい時間: ${duration}s)`);
     clip.tracks.forEach(track => {
         if (track.times.length > 0) {
             track.times[track.times.length - 1] = duration;
