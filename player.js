@@ -23,7 +23,7 @@ export class Player extends EventTarget {
         this.previousItem = null;
         this.isPlaying = false;
         this.speedFactor = 1.0;
-        this.interval = 0.2;
+        this.interval = 0;
     }
 
     bind(canvas) {
@@ -276,6 +276,11 @@ export class Player extends EventTarget {
         }
     }
 
+    clearQueue() {
+        this.queue.length = 0;
+        this.isPlaying = false;
+    }
+
     /**
      * 休止アクション(テ)を再生する
      */
@@ -339,6 +344,7 @@ export class Player extends EventTarget {
  * @param {number} duration - 新しい再生時間(s)
  */
 function setClipDuration(clip, duration) {
+    console.log(`クリップの再生時間を拡張: ${clip.name} (元の時間: ${clip.duration}s, 新しい時間: ${duration}s)`);
     clip.tracks.forEach(track => {
         if (track.times.length > 0) {
             track.times[track.times.length - 1] = duration;

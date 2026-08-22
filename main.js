@@ -64,7 +64,7 @@ const state = {
 
     get currentWord() {
         if (this._index < 0 || this._index >= this._currentWords.length) {
-            return undefined;
+            return null;
         } else {
             return this._currentWords[this._index];
         }
@@ -457,7 +457,7 @@ function submitAnswer() {
             case Steps.Writing:
                 const inputWord = answerInput.value.trim().hiraganaToKatakana();
 
-                if (inputWord === '' || state.currentWord === undefined) {
+                if (inputWord === '' || state.currentWord === null) {
                     return; // 空の回答は無視
                 }
 
@@ -487,6 +487,8 @@ function submitAnswer() {
                 state.step = Steps.Submitted;
                 break;
             case Steps.Submitted:
+                playerInstance.clearQueue(); // キューをクリアする
+
                 // 次の単語を再生するためにキューに追加
                 if (state.currentWordIndex >= state.currentWords.length - 1) {
                     console.log('すべての単語を回答しました。セッションを終了します。');
@@ -504,13 +506,16 @@ function submitAnswer() {
 }
 
 function review() {
-    if (state.currentWords.length == 0) {
+    if (state.currentWord === null) {
         return;
     }
 
     // 見直し処理
     state.incrementReviewCount(); // 見直し回数を増やす
-    playerInstance.enqueue(state.currentWords[state.currentWordIndex]); // 現在の単語を再生するためにキューに追加
+    playerInstance.clearQueue(); // キューをクリアする
+    setTimeout(() => {
+        playerInstance.enqueue(state.currentWord); // 現在の単語を再生するためにキューに追加
+    }, 500);
 }
 
 function reset() {
@@ -526,6 +531,7 @@ function reset() {
     if (accuracyRateDisplay) {
         accuracyRateDisplay.textContent = '0 / 0';
     }
+    playerInstance.clearQueue(); // キューをクリアする
     playerInstance.resetCamera(); // カメラをリセットする
     playerInstance.restPose();
 }
@@ -552,6 +558,7 @@ function finishSession() {
     const evaluationDialog = document.querySelector('.evaluation-dialog');
     if (evaluationDialog) {
         evaluationDialog.hidden = false;
+        playerInstance.clearQueue(); // キューをクリアする
         setTimeout(() => {
             document.querySelector('.evaluation-close-button')?.focus();
         }, 0);
