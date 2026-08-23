@@ -69,6 +69,11 @@ const state = {
             answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
         }
 
+        const answerButton = document.querySelector('.answer-button');
+        if (answerButton) {
+            answerButton.textContent = '再生';
+        }
+
         const subtitleText = document.querySelector('.subtitle-text');
         if (subtitleText) {
             subtitleText.textContent = ''; // 字幕をクリアする
@@ -96,8 +101,7 @@ const state = {
         this._correctCount++;
         const accuracyRateDisplay = document.querySelector('.accuracy-rate');
         if (accuracyRateDisplay) {
-            const totalAttempts = this._correctCount + this._incorrectCount;
-            accuracyRateDisplay.textContent = `${this._correctCount} / ${totalAttempts}`;
+            accuracyRateDisplay.textContent = `${this._correctCount} / ${this.totalAttempts}`;
         }
     },
 
@@ -111,9 +115,12 @@ const state = {
         this._incorrectCount++;
         const accuracyRateDisplay = document.querySelector('.accuracy-rate');
         if (accuracyRateDisplay) {
-            const totalAttempts = this._correctCount + this._incorrectCount;
-            accuracyRateDisplay.textContent = `${this._correctCount} / ${totalAttempts}`;
+            accuracyRateDisplay.textContent = `${this._correctCount} / ${this.totalAttempts}`;
         }
+    },
+
+    get totalAttempts() {
+        return this._correctCount + this._incorrectCount;
     },
 
     _answeredCharacterCount: 0,
@@ -206,9 +213,18 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             }
         });
         answerInput.addEventListener('input', (event) => {
-            state.step = (answerInput.value.length == 0) ? Steps.Init : Steps.Writing;
+            if (answerInput.value.length > 0) {
+                state.step = Steps.Writing;
+                const answerButton = document.querySelector('.answer-button');
+                if (answerButton) {
+                    answerButton.textContent = '回答';
+                }
+            } else {
+                state.step = Steps.Init;
+            }
         });
 
+        answerInput.value = '';
         answerInput.focus(); // 初期フォーカスを設定する
         answerInput.addEventListener('blur', (event) => {
             if (!state.activeDialog) {
@@ -372,6 +388,8 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         state.currentWords = filterWordsByLength(state.allWords, minLength, maxLength);
         state.currentWords.shuffle();
     }
+
+    state.step = Steps.Init;
 });
 
 playerInstance.addEventListener('loadingFinished', () => {
@@ -511,7 +529,7 @@ function reset() {
 }
 
 function finishSession() {
-    const totalAttempts = state.correctCount + state.incorrectCount;
+    const totalAttempts = state.totalAttempts;
     const accuracyRate = totalAttempts > 0 ? (state.correctCount / totalAttempts) * 100 : 0;
     const elapsedSeconds = Math.max(0, Math.floor((Date.now() - state.sessionStartedAt) / 1000));
     const minutes = Math.floor(elapsedSeconds / 60);
