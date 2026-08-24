@@ -8,7 +8,8 @@ import { Player } from './player.js';
 const Steps = Object.freeze({
     Init: 0, // 回答未入力
     Writing: 1, // 回答入力中
-    Submitted: 2 // 回答送信後
+    Submitted: 2, // 回答送信後
+    Evaluation: 3 // 評価表示中
 });
 
 const state = {
@@ -147,6 +148,10 @@ const state = {
 
     get answeredWords() {
         return this._answeredWords;
+    },
+
+    clearAnsweredWords() {
+        this._answeredWords.clear();
     }
 };
 
@@ -160,7 +165,13 @@ if (canvas) {
 // setup event listeners for buttons
 document.addEventListener('DOMContentLoaded', async (event) => {
     // 設定の読み込み(LocalStorageから)
-    const settings = JSON.parse(localStorage.getItem('settings')) || {};
+    const settings = JSON.parse(localStorage.getItem('settings')) || {
+        wordLengthMin: '2',
+        wordLengthMax: '5',
+        playSpeed: '1.0',
+        playInterval: '0',
+        flipMode: false
+    };
 
     // 全体のキーイベントリスナー
     document.addEventListener('keydown', (event) => {
@@ -279,12 +290,12 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const flipButton = document.querySelector('.flip-mode');
     if (flipButton) {
         flipButton.addEventListener('click', () => {
-            playerInstance.toggleFlipMode();
+            playerInstance.setFlipMode(flipButton.checked);
             saveSettings();
         });
-        if (settings.flipMode == true) {
-            flipButton.checked = true;
-            flipButton.dispatchEvent(new Event('click')); // 初期状態を反映するためにイベントを発火
+        if (settings.flipMode !== undefined) {
+            flipButton.checked = settings.flipMode;
+            playerInstance.setFlipMode(flipButton.checked);
         }
     }
 
@@ -332,9 +343,9 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
             saveSettings();
         });
-        if (settings.playSpeed) {
+        if (settings.playSpeed !== undefined) {
             playSpeedSelector.value = settings.playSpeed;
-            playSpeedSelector.dispatchEvent(new Event('change')); // 初期状態を反映するためにイベントを発火
+            playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
         }
     }
 
@@ -349,7 +360,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         });
         if (settings.playInterval) {
             playIntervalSelector.value = settings.playInterval;
-            playIntervalSelector.dispatchEvent(new Event('change')); // 初期状態を反映するためにイベントを発火
+            playerInstance.setInterval(parseFloat(playIntervalSelector.value));
         }
     }
 
@@ -363,6 +374,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const endButton = document.querySelector('.end-button');
     if (endButton) {
         endButton.addEventListener('click', () => {
+            state.step = Steps.Evaluation;
             finishSession();
         });
     }
@@ -486,6 +498,7 @@ function submitAnswer() {
                 // 次の単語を再生するためにキューに追加
                 if (state.currentWord === undefined) {
                     console.log('すべての単語を回答しました。セッションを終了します。');
+                    state.step = Steps.Evaluation;
                     finishSession(); // セッションを終了する
                     return;
                 } else {
@@ -493,6 +506,11 @@ function submitAnswer() {
                 }
 
                 state.step = Steps.Init; // ステップを初期化
+                break;
+            case Steps.Evaluation:
+                break;
+            default:
+                console.error(`Unknown step: ${state.step}`);
                 break;
         }
     }
@@ -551,9 +569,6 @@ function finishSession() {
     if (evaluationDialog) {
         evaluationDialog.hidden = false;
         playerInstance.clearQueue(); // キューをクリアする
-        setTimeout(() => {
-            document.querySelector('.evaluation-close-button')?.focus();
-        }, 0);
     }
 
     // LocalStorageに結果を保存する
@@ -570,7 +585,8 @@ function finishSession() {
     sessionResults.push(sessionResult);
     localStorage.setItem('sessionResults', JSON.stringify(sessionResults));
 
-    state.answeredWords.clear(); // 回答済みの単語をリセットする
+    state.clearAnsweredWords(); // 回答済みの単語をリセットする
+    refreshCurrentWords(); // 現在の単語リストを更新する
 }
 
 function renderLearningHistory() {
@@ -612,12 +628,21 @@ function getGrade(accuracyRate) {
 
 function saveSettings() {
     const settings = {
-        wordLengthMin: document.querySelector('.word-length-min')?.value || '',
-        wordLengthMax: document.querySelector('.word-length-max')?.value || '',
-        playSpeed: document.querySelector('.play-speed')?.value || '1.0',
-        playInterval: document.querySelector('.play-interval')?.value || '0',
+        wordLengthMin: document.querySelector('.word-length-min')?.value || 2,
+        wordLengthMax: document.querySelector('.word-length-max')?.value || 5,
+        playSpeed: document.querySelector('.play-speed')?.value || 1.0,
+        playInterval: document.querySelector('.play-interval')?.value || 0,
         flipMode: document.querySelector('.flip-mode')?.checked || false
     };
 
     localStorage.setItem('settings', JSON.stringify(settings));
+}
+
+function refreshCurrentWords() {
+    const minLength = document.querySelector('.word-length-min')?.value || 2;
+    const maxLength = document.querySelector('.word-length-max')?.value || 5;
+
+    const temp = filterWordsByLength(state.allWords, minLength, maxLength);
+    state.currentWords = filterAnsweredWords(temp);
+    state.currentWords.shuffle();
 }

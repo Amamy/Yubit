@@ -320,8 +320,8 @@ export class Player extends EventTarget {
         requestAnimationFrame(animateReset);
     }
 
-    toggleFlipMode() {
-        this.scene.scale.x *= -1; // X軸方向に反転
+    setFlipMode(flip) {
+        this.scene.scale.x *= (flip ? -1 : 1);
         this.controls.update();
     }
 
