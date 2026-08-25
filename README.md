@@ -14,8 +14,3 @@ Similar apps featuring JSL fingerspelling exist, but most of them only provide s
 - [Human Base Meshes v1.4.1](https://www.blender.org/download/demo-files/) - A set of human base meshes (CC0).
 
 I would like to thank everyone who has developed and made available these wonderful libraries and resources.
-
-## Change Log
-
-- [2026-08-19] r1: The initial release for review and testing.
-- [2026-08-20] r2: Bug fixes.

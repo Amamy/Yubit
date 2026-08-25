@@ -4,12 +4,14 @@ const MODEL_PATH = 'yubit.glb'; // モデルファイルのパス
 const WORD_LIST_PATH = 'wordlist.json'; // 単語リストのJSONファイルのパス
 
 import { Player } from './player.js';
+import { sleep } from './util.js';
 
 const Steps = Object.freeze({
-    Init: 0, // 回答未入力
-    Writing: 1, // 回答入力中
-    Submitted: 2, // 回答送信後
-    Evaluation: 3 // 評価表示中
+    Init: 0, // 開始前
+    Ready: 1, // 開始後
+    Writing: 2, // 回答入力中
+    Submitted: 3, // 回答送信後
+    Evaluation: 4 // 評価表示中
 });
 
 const state = {
@@ -50,7 +52,7 @@ const state = {
         return this._currentWords.peek();
     },
 
-    _step: 0, // 初期状態でSteps.Initとする
+    _step: Steps.Init, // 初期状態でSteps.Initとする
 
     get step() {
         return this._step;
@@ -58,27 +60,60 @@ const state = {
 
     set step(newStep) {
         this._step = newStep;
-        if (this._step === Steps.Init) {
-            this.onStepInit();
-        }
+        this.onStepChanged(newStep);
     },
 
-    onStepInit() {
+    onStepChanged(step) {
+        const greyOverlay = document.querySelector('.grey-overlay');
         const answerInput = document.querySelector('.answer-input');
-        if (answerInput) {
-            answerInput.value = ''; // 入力欄をクリアする
-            answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
-        }
-
-        const answerButton = document.querySelector('.answer-button');
-        if (answerButton) {
-            answerButton.textContent = '再生';
-        }
-
+        const reviewButton = document.querySelector('.review-button');
         const subtitleText = document.querySelector('.subtitle-text');
-        if (subtitleText) {
-            subtitleText.textContent = ''; // 字幕をクリアする
-            subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+        switch (step) {
+            case Steps.Init:
+                if (greyOverlay) {
+                    greyOverlay.hidden = false;
+                }
+                if (answerInput) {
+                    answerInput.placeholder = 'Enterでスタート'
+                    answerInput.value = ''; // 入力欄をクリアする
+                    answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+                }
+                if (reviewButton) {
+                    reviewButton.textContent = 'スタート';
+                }
+
+                if (subtitleText) {
+                    subtitleText.textContent = ''; // 字幕をクリアする
+                    subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+                }
+                break;
+            case Steps.Ready:
+                if (greyOverlay) {
+                    greyOverlay.hidden = true; // グレーのオーバーレイを非表示にする
+                }
+                if (answerInput) {
+                    answerInput.placeholder = 'Enterで見直し／回答'
+                }
+                if (reviewButton) {
+                    reviewButton.textContent = 'もう一度再生する';
+                }
+                if (answerInput) {
+                    answerInput.value = ''; // 入力欄をクリアする
+                    answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+                }
+                if (subtitleText) {
+                    subtitleText.textContent = ''; // 字幕をクリアする
+                    subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+                }
+                break;
+            case Steps.Writing:
+                break;
+            case Steps.Submitted:
+                break;
+            case Steps.Evaluation:
+                break;
+            default:
+                console.error(`Unknown step: ${step}`);
         }
     },
 
@@ -209,29 +244,46 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             }, 0);
         });
         answerInput.addEventListener('keydown', (event) => {
+            console.log(`Key pressed: ${event.key}, Current step: ${state.step}, Input value: ${answerInput.value}`);
+            console.log(`${isComposing}, ${event.isComposing}, ${event.keyCode}`);
+
             if (isComposing || event.isComposing || event.keyCode == 229) {
                 return;
             }
 
-            if (event.key === 'Enter') {
-                submitAnswer();
-            }
-
-            // テスト用(Tabキーで回答欄の内容をキューに追加する)
-            if (event.key === 'Tab') {
-                playerInstance.enqueue(answerInput.value);
-                event.preventDefault(); // デフォルトのタブ動作を無効化
+            switch (event.key) {
+                case 'Enter':
+                    switch (state.step) {
+                        case Steps.Init:
+                            state.step = Steps.Ready;
+                            review(false);
+                            break;
+                        case Steps.Ready:
+                            review(true);
+                            break;
+                        case Steps.Writing:
+                        case Steps.Submitted:
+                            submitAnswer();
+                            break;
+                    }
+                    event.preventDefault(); // デフォルトのEnter動作を無効化
+                    break;
+                case 'Tab':
+                    // テスト用(Tabキーで回答欄の内容をキューに追加する)
+                    if (answerInput.value.length > 0) {
+                        playerInstance.enqueue(answerInput.value);
+                        event.preventDefault(); // デフォルトのタブ動作を無効化
+                    }
+                    break;
+                default:
+                    break;
             }
         });
         answerInput.addEventListener('input', (event) => {
             if (answerInput.value.length > 0) {
                 state.step = Steps.Writing;
-                const answerButton = document.querySelector('.answer-button');
-                if (answerButton) {
-                    answerButton.textContent = '回答';
-                }
             } else {
-                state.step = Steps.Init;
+                state.step = Steps.Ready;
             }
         });
 
@@ -282,7 +334,12 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const reviewButton = document.querySelector('.review-button');
     if (reviewButton) {
         reviewButton.addEventListener('click', () => {
-            review();
+            if (state.step === Steps.Init) {
+                state.step = Steps.Ready;
+                review(false);
+            } else {
+                review(true);
+            }
         });
     }
 
@@ -453,10 +510,6 @@ function submitAnswer() {
     console.log(`submitAnswer called. Current step: ${state.step}, Current word: ${state.currentWord}`);
     if (answerInput) {
         switch (state.step) {
-            case Steps.Init:
-                // 回答未入力の場合、見直し処理とする
-                review();
-                break;
             case Steps.Writing:
                 const inputWord = answerInput.value.trim().hiraganaToKatakana();
 
@@ -505,24 +558,21 @@ function submitAnswer() {
                     playerInstance.enqueue(state.currentWord);
                 }
 
-                state.step = Steps.Init; // ステップを初期化
-                break;
-            case Steps.Evaluation:
-                break;
-            default:
-                console.error(`Unknown step: ${state.step}`);
+                state.step = Steps.Ready;
                 break;
         }
     }
 }
 
-function review() {
+function review(increment = true) {
     if (state.currentWord === null) {
         return;
     }
 
     // 見直し処理
-    state.incrementReviewCount(); // 見直し回数を増やす
+    if (increment) {
+        state.incrementReviewCount(); // 見直し回数を増やす
+    }
     playerInstance.clearQueue(); // キューをクリアする
     setTimeout(() => {
         playerInstance.enqueue(state.currentWord); // 現在の単語を再生するためにキューに追加

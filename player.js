@@ -321,8 +321,10 @@ export class Player extends EventTarget {
     }
 
     setFlipMode(flip) {
-        this.scene.scale.x *= (flip ? -1 : 1);
-        this.controls.update();
+        if ((flip && this.scene.scale.x > 0) || (!flip && this.scene.scale.x < 0)) {
+            this.scene.scale.x *= -1;
+            this.controls.update();
+        }
     }
 
     setPlaySpeed(factor) {
