@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-const TIME_CROSS_FADE = 0.2; // クロスフェードの時間（秒）
+const TIME_CROSS_FADE = 0.25; // クロスフェードの時間（秒）
 const SCALE_FACTOR = 1.25; // モデルのスケールを調整するための係数
 const MIN_DURATION = 0.5; // 最小再生時間（秒）
 
