@@ -3,7 +3,7 @@
 const MODEL_PATH = 'yubit.glb'; // モデルファイルのパス
 const WORD_LIST_PATH = 'wordlist.json'; // 単語リストのJSONファイルのパス
 
-import { sleep, installExtensions } from './util.js';
+import { sleep, installExtensions, ObservableArray } from './util.js';
 import { Player } from './player.js';
 
 installExtensions();
@@ -29,7 +29,7 @@ const state = {
         this._allWords = newWords;
     },
 
-    _currentWords: [],
+    _currentWords: null,
 
     get currentWords() {
         return this._currentWords;
@@ -37,19 +37,16 @@ const state = {
 
     set currentWords(newWords) {
         this._currentWords = newWords;
-        // 単語リストが更新された場合の処理を実行
-        this.onWordListChanged();
-    },
-
-    onWordListChanged() {
-        const remainingWords = document.querySelector('.remaining-words');
-        if (remainingWords) {
-            remainingWords.textContent = state.currentWords.length;
-        }
+        this._currentWords.onChange((items) => {
+            const remainingWords = document.querySelector('.remaining-words');
+            if (remainingWords) {
+                remainingWords.textContent = items.length;
+            }
+        });
     },
 
     get currentWord() {
-        return this._currentWords.peek();
+        return this.currentWords.peek();
     },
 
     _step: Steps.Init, // 初期状態でSteps.Initとする
@@ -207,6 +204,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         playInterval: '0',
         flipMode: false
     };
+    console.log('Loaded settings from LocalStorage:', settings);
 
     // 全体のキーイベントリスナー
     document.addEventListener('keydown', (event) => {
@@ -370,7 +368,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             }
             if (!isNaN(minLength) && !isNaN(maxLength)) {
                 const temp = filterWordsByLength(state.allWords, minLength, maxLength);
-                state.currentWords = filterAnsweredWords(temp);
+                state.currentWords = new ObservableArray(filterAnsweredWords(temp));
                 state.currentWords.shuffle();
                 saveSettings();
             } else {
@@ -409,7 +407,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             playerInstance.setInterval(intervalValue);
             saveSettings();
         });
-        if (settings.playInterval) {
+        if (settings.playInterval !== undefined) {
             playIntervalSelector.value = settings.playInterval;
             playerInstance.setInterval(parseFloat(playIntervalSelector.value));
         }
@@ -448,7 +446,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     if (minLengthInput && maxLengthInput) {
         const minLength = parseInt(minLengthInput.value, 10);
         const maxLength = parseInt(maxLengthInput.value, 10);
-        state.currentWords = filterWordsByLength(state.allWords, minLength, maxLength);
+        state.currentWords = new ObservableArray(filterWordsByLength(state.allWords, minLength, maxLength));
         state.currentWords.shuffle();
     }
 
@@ -474,21 +472,6 @@ async function loadWordList() {
         console.error('Error loading word list:', error);
     }
 }
-
-Array.prototype.shuffle = function () {
-    for (let i = this.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [this[i], this[j]] = [this[j], this[i]];
-    }
-    return this;
-};
-
-Array.prototype.peek = function () {
-    if (this.length === 0) {
-        return undefined;
-    }
-    return this[this.length - 1];
-};
 
 function filterWordsByLength(words, minLength, maxLength) {
     return words.filter(word => word.length >= minLength && word.length <= maxLength);
@@ -539,15 +522,14 @@ function submitAnswer() {
             case Steps.Submitted:
                 playerInstance.clearQueue(); // キューをクリアする
                 state.currentWords.pop(); // 回答済みの単語をリストから削除する
-                state.onWordListChanged(); // 単語リストが更新されたことを通知する
 
                 // 次の単語を再生するためにキューに追加
-                if (state.currentWord === undefined) {
+                if (state.currentWords.length === 0) {
                     state.step = Steps.Evaluation;
                     finishSession(); // セッションを終了する
                     return;
                 } else {
-                    playerInstance.enqueue(state.currentWord);
+                    playerInstance.enqueue(state.currentWords.peek()); // 次の単語をキューに追加
                 }
 
                 state.step = Steps.Ready;
@@ -685,6 +667,6 @@ function refreshCurrentWords() {
     const maxLength = document.querySelector('.word-length-max')?.value || 5;
 
     const temp = filterWordsByLength(state.allWords, minLength, maxLength);
-    state.currentWords = filterAnsweredWords(temp);
+    state.currentWords = new ObservableArray(filterAnsweredWords(temp));
     state.currentWords.shuffle();
 }

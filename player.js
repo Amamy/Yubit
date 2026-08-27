@@ -3,12 +3,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { sleep } from './util.js';
 
 const TIME_CROSS_FADE = 0.25; // クロスフェードの時間（秒）
 const SCALE_FACTOR = 1.25; // モデルのスケールを調整するための係数
 const MIN_DURATION = 0.5; // 最小再生時間（秒）
 
 export class Player extends EventTarget {
+    #previouslyReversed = false;
+
     constructor(canvas) {
         super();
         this.scene = new THREE.Scene();
@@ -130,7 +133,7 @@ export class Player extends EventTarget {
     }
 
     onFinished(event) {
-        console.log(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event.action);
+        console.log(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event);
 
         switch (event.action.getClip().name) {
             case 'SnapX+':
@@ -143,20 +146,27 @@ export class Player extends EventTarget {
         }
 
         if (this.queue.length > 0) {
-            setTimeout(() => {
-                this.resume();
-            }, this.interval * 1000);
+            this.resume();
         } else {
             this.isPlaying = false;
         }
     }
 
-    resume() {
+    async resume() {
         const item = this.queue.shift();
 
         if (!item) {
             this.isPlaying = false;
             return;
+        }
+
+        // インターバル
+        if (this.interval > 0) {
+            if (this.#previouslyReversed) {
+                await sleep(this.interval * 1000 * 0.25);
+            } else {
+                await sleep(this.interval * 1000);
+            }
         }
 
         // 同時再生
@@ -166,12 +176,15 @@ export class Player extends EventTarget {
             this.resume();
             return;
         }
+
         // 逆再生
         if (item.reverse) {
             item.action.time = item.action.getClip().duration;
             item.action.setEffectiveTimeScale(-1.5 * this.speedFactor);
+            this.#previouslyReversed = true;
         } else {
             item.action.setEffectiveTimeScale(1 * this.speedFactor);
+            this.#previouslyReversed = false;
         }
         // 前のアクションからクロスフェードしつつ新しいアクションを再生する
         if (this.previousItem) {

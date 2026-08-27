@@ -57,7 +57,26 @@ export class ObservableArray {
         return item;
     }
 
+    peek() {
+        if (this.#items.length === 0) {
+            return undefined;
+        }
+        return this.#items[this.#items.length - 1];
+    }
+
+    shuffle() {
+        for (let i = this.#items.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.#items[i], this.#items[j]] = [this.#items[j], this.#items[i]];
+        }
+        this.#notify();
+    }
+
     get items() {
         return [...this.#items];
+    }
+
+    get length() {
+        return this.#items.length;
     }
 }
