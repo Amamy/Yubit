@@ -1,6 +1,5 @@
 // player.js
 
-import { sleep, isDakuon, removeDakuten, pairWithNext } from './util.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -160,13 +159,6 @@ export class Player extends EventTarget {
             return;
         }
 
-        // 濁音
-        if (item.tenn) {
-            const tennAction = this.actions['゛'];
-            this.dakuonCount += 1;
-            tennAction.weight = Math.min(1.0, 0.15 * this.dakuonCount);
-            tennAction.reset().fadeIn(TIME_CROSS_FADE).play();
-        }
         // 同時再生
         if (item.simultaneous) {
             item.action.blendMode = THREE.AdditiveAnimationBlendMode;
@@ -223,7 +215,6 @@ export class Player extends EventTarget {
             const item = {
                 action: null,
                 char: char,
-                tenn: false,
                 reverse: false,
                 simultaneous: false
             };
@@ -236,7 +227,6 @@ export class Player extends EventTarget {
                     const decorator = {
                         action: null,
                         char: null,
-                        tenn: false,
                         reverse: false,
                         simultaneous: true
                     };

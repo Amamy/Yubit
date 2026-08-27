@@ -3,8 +3,10 @@
 const MODEL_PATH = 'yubit.glb'; // モデルファイルのパス
 const WORD_LIST_PATH = 'wordlist.json'; // 単語リストのJSONファイルのパス
 
+import { sleep, installExtensions } from './util.js';
 import { Player } from './player.js';
-import { sleep } from './util.js';
+
+installExtensions();
 
 const Steps = Object.freeze({
     Init: 0, // 開始前
@@ -40,8 +42,6 @@ const state = {
     },
 
     onWordListChanged() {
-        console.log(`単語リストが更新されました (${this._currentWords.length} 件)`);
-
         const remainingWords = document.querySelector('.remaining-words');
         if (remainingWords) {
             remainingWords.textContent = state.currentWords.length;
@@ -244,9 +244,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             }, 0);
         });
         answerInput.addEventListener('keydown', (event) => {
-            console.log(`Key pressed: ${event.key}, Current step: ${state.step}, Input value: ${answerInput.value}`);
-            console.log(`${isComposing}, ${event.isComposing}, ${event.keyCode}`);
-
             if (isComposing || event.isComposing || event.keyCode == 229) {
                 return;
             }
@@ -372,7 +369,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
                 minLength = maxLength;
             }
             if (!isNaN(minLength) && !isNaN(maxLength)) {
-                console.log(`文字数の範囲が設定されました: ${minLength} - ${maxLength}`);
                 const temp = filterWordsByLength(state.allWords, minLength, maxLength);
                 state.currentWords = filterAnsweredWords(temp);
                 state.currentWords.shuffle();
@@ -396,7 +392,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const playSpeedSelector = document.querySelector('.play-speed');
     if (playSpeedSelector) {
         playSpeedSelector.addEventListener('change', () => {
-            console.log(`再生速度が変更されました: ${playSpeedSelector.value}`);
             playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
             saveSettings();
         });
@@ -411,7 +406,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     if (playIntervalSelector) {
         playIntervalSelector.addEventListener('change', () => {
             const intervalValue = parseFloat(playIntervalSelector.value);
-            console.log(`文字間のインターバルが変更されました: ${intervalValue}秒`);
             playerInstance.setInterval(intervalValue);
             saveSettings();
         });
@@ -507,7 +501,6 @@ function filterAnsweredWords(words) {
 function submitAnswer() {
     const answerInput = document.querySelector('.answer-input');
     const subtitleText = document.querySelector('.subtitle-text');
-    console.log(`submitAnswer called. Current step: ${state.step}, Current word: ${state.currentWord}`);
     if (answerInput) {
         switch (state.step) {
             case Steps.Writing:
@@ -550,7 +543,6 @@ function submitAnswer() {
 
                 // 次の単語を再生するためにキューに追加
                 if (state.currentWord === undefined) {
-                    console.log('すべての単語を回答しました。セッションを終了します。');
                     state.step = Steps.Evaluation;
                     finishSession(); // セッションを終了する
                     return;
