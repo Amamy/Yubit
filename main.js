@@ -3,18 +3,21 @@
 const MODEL_PATH = 'yubit.glb'; // モデルファイルのパス
 const WORD_LIST_PATH = 'wordlist.json'; // 単語リストのJSONファイルのパス
 
-import { sleep, installExtensions, ObservableArray } from './util.js';
+import { installExtensions, ObservableArray } from './util.js';
 import { Player } from './player.js';
 
 installExtensions();
 
 const Steps = Object.freeze({
-    Init: 0, // 開始前
-    Ready: 1, // 開始後
+    Init: 0, // セッション開始前
+    Ready: 1, // セッション開始後
     Writing: 2, // 回答入力中
     Submitted: 3, // 回答送信後
     Evaluation: 4 // 評価表示中
 });
+
+const canvas = document.querySelector('.player');
+const playerInstance = new Player();
 
 const state = {
     sessionStartedAt: Date.now(),
@@ -46,10 +49,14 @@ const state = {
     },
 
     get currentWord() {
+        if (!this.currentWords || this.currentWords.length === 0) {
+            return null;
+        }
+
         return this.currentWords.peek();
     },
 
-    _step: Steps.Init, // 初期状態でSteps.Initとする
+    _step: undefined,
 
     get step() {
         return this._step;
@@ -187,24 +194,41 @@ const state = {
     }
 };
 
-const canvas = document.querySelector('.player');
-let playerInstance;
-if (canvas) {
-    playerInstance = new Player(canvas).load(MODEL_PATH);
-    playerInstance.run();
-}
-
-// setup event listeners for buttons
-document.addEventListener('DOMContentLoaded', async (event) => {
-    // 設定の読み込み(LocalStorageから)
-    const settings = JSON.parse(localStorage.getItem('settings')) || {
+function loadSettings() {
+    const settings = JSON.parse(localStorage.getItem('settings'))
+    const defaultSettings = {
         wordLengthMin: '2',
         wordLengthMax: '5',
         playSpeed: '1.0',
         playInterval: '0',
         flipMode: false
     };
-    console.log('Loaded settings from LocalStorage:', settings);
+
+    if (!settings) {
+        return defaultSettings;
+    }
+
+    try {
+        parseInt(settings.wordLengthMin);
+        parseInt(settings.wordLengthMax);
+        parseFloat(settings.playSpeed);
+        parseFloat(settings.playInterval);
+    } catch (error) {
+        console.error('Error loading settings from LocalStorage:', settings, error);
+        return defaultSettings;
+    }
+
+    console.info('Loaded settings from LocalStorage:', settings);
+
+    return settings;
+}
+
+
+// setup event listeners for buttons
+function setupListeners() {
+
+    // 設定の読み込み(LocalStorageから)
+    const settings = loadSettings();
 
     // 全体のキーイベントリスナー
     document.addEventListener('keydown', (event) => {
@@ -439,9 +463,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         });
     }
 
-    // 単語リストの読み込み
-    await loadWordList();
-
     // 単語リストのフィルタリング
     if (minLengthInput && maxLengthInput) {
         const minLength = parseInt(minLengthInput.value, 10);
@@ -449,13 +470,7 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         state.currentWords = new ObservableArray(filterWordsByLength(state.allWords, minLength, maxLength));
         state.currentWords.shuffle();
     }
-
-    state.step = Steps.Init;
-});
-
-playerInstance.addEventListener('loadingFinished', () => {
-    playerInstance.restPose();
-});
+}
 
 // Load the word list from a JSON file
 async function loadWordList() {
@@ -465,6 +480,7 @@ async function loadWordList() {
         if (Array.isArray(data.words)) {
             state.allWords.length = 0; // Clear the existing list
             state.allWords.push(...data.words); // Populate with new words
+            console.info(`Loaded ${state.allWords.length} words from ${WORD_LIST_PATH}`);
         } else {
             console.error('Invalid word list format in JSON.');
         }
@@ -539,7 +555,7 @@ function submitAnswer() {
 }
 
 function review(increment = true) {
-    if (state.currentWord === null) {
+    if (!state.currentWord) {
         return;
     }
 
@@ -613,16 +629,20 @@ function finishSession() {
     refreshCurrentWords(); // 現在の単語リストを更新する
 }
 
-function renderLearningHistory() {
-    let sessionResults = [];
+function loadLearningHistory() {
     try {
         const storedResults = JSON.parse(localStorage.getItem('sessionResults') || '[]');
         if (Array.isArray(storedResults)) {
-            sessionResults = storedResults.filter(result => result && typeof result === 'object');
+            return storedResults.filter(result => result && typeof result === 'object');
         }
     } catch (error) {
         console.error('学習履歴の読み込みに失敗しました:', error);
     }
+    return [];
+}
+
+function renderLearningHistory() {
+    const sessionResults = loadLearningHistory();
 
     const total = (key) => sessionResults.reduce((sum, result) => sum + (Number(result[key]) || 0), 0);
     const sessions = sessionResults.length;
@@ -670,3 +690,39 @@ function refreshCurrentWords() {
     state.currentWords = new ObservableArray(filterAnsweredWords(temp));
     state.currentWords.shuffle();
 }
+
+/**
+ * DOMContentLoaded を待機する Promise を返す
+ */
+function waitForDOMContentLoaded() {
+    return new Promise((resolve) => {
+        if (document.readyState !== 'loading') {
+            // すでに DOMContentLoaded 以降のフェーズにある場合は即座に resolve
+            console.info('DOMContentLoaded event has already fired');
+            resolve();
+        } else {
+            // まだ読み込み中の場合のみイベントを1度だけ待機
+            document.addEventListener('DOMContentLoaded', () => {
+                console.info('DOMContentLoaded event fired');
+                resolve();
+            }, { once: true });
+        }
+    });
+}
+
+async function main() {
+    await Promise.all([
+        loadWordList(),
+        playerInstance.loadAsync(MODEL_PATH),
+        waitForDOMContentLoaded()
+    ]);
+    if (canvas) {
+        playerInstance.bind(canvas);
+        playerInstance.run();
+        playerInstance.restPose();
+        setupListeners();
+        state.step = Steps.Init;
+    }
+}
+
+main();

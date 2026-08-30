@@ -7,6 +7,18 @@
  */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export function assert(actual, expected, message) {
+    if (actual !== expected) {
+        throw new Error(message || `Assertion failed: expected ${expected}, but got ${actual}`);
+    }
+}
+
+export function assertTrue(condition, message) {
+    if (!condition) {
+        throw new Error(message || 'Assertion failed: condition is not true');
+    }
+}
+
 /**
  * 拡張メソッドをインストールする
  */
