@@ -3,196 +3,117 @@
 const MODEL_PATH = 'yubit.glb'; // モデルファイルのパス
 const WORD_LIST_PATH = 'wordlist.json'; // 単語リストのJSONファイルのパス
 
-import { installExtensions, ObservableArray } from './util.js';
+import { assertTrue, installExtensions, ObservableArray } from './util.js';
 import { Player } from './player.js';
+import { GameState, Steps } from './state.js';
 
 installExtensions();
 
-const Steps = Object.freeze({
-    Init: 0, // セッション開始前
-    Ready: 1, // セッション開始後
-    Writing: 2, // 回答入力中
-    Submitted: 3, // 回答送信後
-    Evaluation: 4 // 評価表示中
+const playerInstance = new Player();
+const state = new GameState();
+
+// DOM要素は動的に追加・削除されないため、起動時に一度だけ取得してキャッシュする
+const elements = {};
+
+function cacheElements() {
+    elements.canvas = document.querySelector('.player');
+    elements.dialogs = document.querySelectorAll('.dialog');
+    elements.remainingWords = document.querySelector('.remaining-words');
+    elements.accuracyRateDisplay = document.querySelector('.accuracy-rate');
+    elements.greyOverlay = document.querySelector('.grey-overlay');
+    elements.answerInput = document.querySelector('.answer-input');
+    elements.reviewButton = document.querySelector('.review-button');
+    elements.subtitleText = document.querySelector('.subtitle-text');
+    elements.answerButton = document.querySelector('.answer-button');
+    elements.resetButton = document.querySelector('.reset-button');
+    elements.historyDialog = document.querySelector('.history-dialog');
+    elements.historyButton = document.querySelector('.history-button');
+    elements.historyCloseButton = document.querySelector('.history-close-button');
+    elements.flipButton = document.querySelector('.flip-mode');
+    elements.minLengthInput = document.querySelector('.word-length-min');
+    elements.maxLengthInput = document.querySelector('.word-length-max');
+    elements.playSpeedSelector = document.querySelector('.play-speed');
+    elements.playIntervalSelector = document.querySelector('.play-interval');
+    elements.endButton = document.querySelector('.end-button');
+    elements.evaluationDialog = document.querySelector('.evaluation-dialog');
+    elements.evaluationCloseButton = document.querySelector('.evaluation-close-button');
+    elements.evaluationAnsweredWords = document.querySelector('.evaluation-answered-words');
+    elements.evaluationCorrectWords = document.querySelector('.evaluation-correct-words');
+    elements.evaluationAccuracy = document.querySelector('.evaluation-accuracy');
+    elements.evaluationDuration = document.querySelector('.evaluation-duration');
+    elements.evaluationCharacters = document.querySelector('.evaluation-characters');
+    elements.evaluationTimePerCharacter = document.querySelector('.evaluation-time-per-character');
+    elements.evaluationReviews = document.querySelector('.evaluation-reviews');
+    elements.evaluationGradeValue = document.querySelector('.evaluation-grade-value');
+    elements.historySessions = document.querySelector('.history-sessions');
+    elements.historyWords = document.querySelector('.history-words');
+    elements.historyAccuracy = document.querySelector('.history-accuracy');
+    elements.historyDuration = document.querySelector('.history-duration');
+    elements.historyCharacters = document.querySelector('.history-characters');
+    elements.historyReviews = document.querySelector('.history-reviews');
+    elements.historyEmpty = document.querySelector('.history-empty');
+
+    // 簡易テスト
+    for (const [key, value] of Object.entries(elements)) {
+        assertTrue(value !== null, `DOM要素が見つかりません: ${key}`);
+    }
+}
+cacheElements();
+
+// ダイアログの表示状態は DOM に紐づくため main.js 側で解決する
+function getActiveDialog() {
+    for (const dialog of elements.dialogs) {
+        if (!dialog.hidden) {
+            return dialog;
+        }
+    }
+    return null;
+}
+
+state.addEventListener('currentwordschange', (event) => {
+    elements.remainingWords.textContent = event.detail.items.length;
 });
 
-const canvas = document.querySelector('.player');
-const playerInstance = new Player();
+state.addEventListener('scorechange', (event) => {
+    elements.accuracyRateDisplay.textContent = `${event.detail.correctCount} / ${event.detail.totalAttempts}`;
+});
 
-const state = {
-    sessionStartedAt: Date.now(),
+state.addEventListener('stepchange', (event) => {
+    onStepChanged(event.detail.step);
+});
 
-    _allWords: [],
+function onStepChanged(step) {
+    const { greyOverlay, answerInput, reviewButton, subtitleText } = elements;
+    switch (step) {
+        case Steps.Init:
+            greyOverlay.hidden = false;
+            answerInput.placeholder = 'Enterでスタート'
+            answerInput.value = ''; // 入力欄をクリアする
+            answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+            reviewButton.textContent = 'スタート';
 
-    get allWords() {
-        return this._allWords;
-    },
-
-    set allWords(newWords) {
-        this._allWords = newWords;
-    },
-
-    _currentWords: null,
-
-    get currentWords() {
-        return this._currentWords;
-    },
-
-    set currentWords(newWords) {
-        this._currentWords = newWords;
-        this._currentWords.onChange((items) => {
-            const remainingWords = document.querySelector('.remaining-words');
-            if (remainingWords) {
-                remainingWords.textContent = items.length;
-            }
-        });
-    },
-
-    get currentWord() {
-        if (!this.currentWords || this.currentWords.length === 0) {
-            return null;
-        }
-
-        return this.currentWords.peek();
-    },
-
-    _step: undefined,
-
-    get step() {
-        return this._step;
-    },
-
-    set step(newStep) {
-        this._step = newStep;
-        this.onStepChanged(newStep);
-    },
-
-    onStepChanged(step) {
-        const greyOverlay = document.querySelector('.grey-overlay');
-        const answerInput = document.querySelector('.answer-input');
-        const reviewButton = document.querySelector('.review-button');
-        const subtitleText = document.querySelector('.subtitle-text');
-        switch (step) {
-            case Steps.Init:
-                if (greyOverlay) {
-                    greyOverlay.hidden = false;
-                }
-                if (answerInput) {
-                    answerInput.placeholder = 'Enterでスタート'
-                    answerInput.value = ''; // 入力欄をクリアする
-                    answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
-                }
-                if (reviewButton) {
-                    reviewButton.textContent = 'スタート';
-                }
-
-                if (subtitleText) {
-                    subtitleText.textContent = ''; // 字幕をクリアする
-                    subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
-                }
-                break;
-            case Steps.Ready:
-                if (greyOverlay) {
-                    greyOverlay.hidden = true; // グレーのオーバーレイを非表示にする
-                }
-                if (answerInput) {
-                    answerInput.placeholder = 'Enterで見直し／回答'
-                }
-                if (reviewButton) {
-                    reviewButton.textContent = 'もう一度再生する';
-                }
-                if (answerInput) {
-                    answerInput.value = ''; // 入力欄をクリアする
-                    answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
-                }
-                if (subtitleText) {
-                    subtitleText.textContent = ''; // 字幕をクリアする
-                    subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
-                }
-                break;
-            case Steps.Writing:
-                break;
-            case Steps.Submitted:
-                break;
-            case Steps.Evaluation:
-                break;
-            default:
-                console.error(`Unknown step: ${step}`);
-        }
-    },
-
-    _reviewCount: 0, // 見直し回数のカウント
-
-    get reviewCount() {
-        return this._reviewCount;
-    },
-
-    incrementReviewCount() {
-        this._reviewCount++;
-    },
-
-    _correctCount: 0, // 正解数のカウント
-
-    get correctCount() {
-        return this._correctCount;
-    },
-
-    incrementCorrectCount() {
-        this._correctCount++;
-        const accuracyRateDisplay = document.querySelector('.accuracy-rate');
-        if (accuracyRateDisplay) {
-            accuracyRateDisplay.textContent = `${this._correctCount} / ${this.totalAttempts}`;
-        }
-    },
-
-    _incorrectCount: 0, // 不正解数のカウント
-
-    get incorrectCount() {
-        return this._incorrectCount;
-    },
-
-    incrementIncorrectCount() {
-        this._incorrectCount++;
-        const accuracyRateDisplay = document.querySelector('.accuracy-rate');
-        if (accuracyRateDisplay) {
-            accuracyRateDisplay.textContent = `${this._correctCount} / ${this.totalAttempts}`;
-        }
-    },
-
-    get totalAttempts() {
-        return this._correctCount + this._incorrectCount;
-    },
-
-    _answeredCharacterCount: 0,
-
-    get answeredCharacterCount() {
-        return this._answeredCharacterCount;
-    },
-
-    addAnsweredCharacters(count) {
-        this._answeredCharacterCount += count;
-    },
-
-    get activeDialog() {
-        const dialogs = document.querySelectorAll('.dialog');
-        for (const dialog of dialogs) {
-            if (!dialog.hidden) {
-                return dialog;
-            }
-        }
-        return null;
-    },
-
-    _answeredWords: new Set(), // 回答済みの単語を保持する
-
-    get answeredWords() {
-        return this._answeredWords;
-    },
-
-    clearAnsweredWords() {
-        this._answeredWords.clear();
+            subtitleText.textContent = ''; // 字幕をクリアする
+            subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+            break;
+        case Steps.Ready:
+            greyOverlay.hidden = true; // グレーのオーバーレイを非表示にする
+            answerInput.placeholder = 'Enterで見直し／回答'
+            reviewButton.textContent = 'もう一度再生する';
+            answerInput.value = ''; // 入力欄をクリアする
+            answerInput.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+            subtitleText.textContent = ''; // 字幕をクリアする
+            subtitleText.classList.remove('correct', 'incorrect'); // 正誤表示をリセットする
+            break;
+        case Steps.Writing:
+            break;
+        case Steps.Submitted:
+            break;
+        case Steps.Evaluation:
+            break;
+        default:
+            console.error(`Unknown step: ${step}`);
     }
-};
+}
 
 function loadSettings() {
     const settings = JSON.parse(localStorage.getItem('settings'))
@@ -233,243 +154,206 @@ function setupListeners() {
     // 全体のキーイベントリスナー
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
-            state.activeDialog?.querySelector('.close-button')?.click();
+            getActiveDialog()?.querySelector('.close-button')?.click();
         }
     });
 
     // 全体のマウスイベントリスナー
     document.addEventListener('mousedown', (event) => {
-        const visiblePanel = state.activeDialog?.querySelector('.panel');
+        const visiblePanel = getActiveDialog()?.querySelector('.panel');
         if (visiblePanel && !visiblePanel.contains(event.target)) {
             visiblePanel.querySelector('.close-button')?.click();
         }
     });
 
     // プレイヤー
-    const playerCanvas = document.querySelector('.player');
-    if (playerCanvas) {
-        playerCanvas.addEventListener('dblclick', () => {
-            playerInstance.resetCamera();
-        });
-    }
+    elements.canvas.addEventListener('dblclick', () => {
+        playerInstance.resetCamera();
+    });
 
     // 回答入力欄
-    const answerInput = document.querySelector('.answer-input');
-    if (answerInput) {
-        let isComposing = false;
-        answerInput.addEventListener('compositionstart', (event) => {
-            isComposing = true;
-        });
-        answerInput.addEventListener('compositionend', (event) => {
-            setTimeout(() => {
-                isComposing = false;
-            }, 0);
-        });
-        answerInput.addEventListener('keydown', (event) => {
-            if (isComposing || event.isComposing || event.keyCode == 229) {
-                return;
-            }
+    const answerInput = elements.answerInput;
+    let isComposing = false;
+    answerInput.addEventListener('compositionstart', (event) => {
+        isComposing = true;
+    });
+    answerInput.addEventListener('compositionend', (event) => {
+        setTimeout(() => {
+            isComposing = false;
+        }, 0);
+    });
+    answerInput.addEventListener('keydown', (event) => {
+        if (isComposing || event.isComposing || event.keyCode == 229) {
+            return;
+        }
 
-            switch (event.key) {
-                case 'Enter':
-                    switch (state.step) {
-                        case Steps.Init:
-                            state.step = Steps.Ready;
-                            review(false);
-                            break;
-                        case Steps.Ready:
-                            review(true);
-                            break;
-                        case Steps.Writing:
-                        case Steps.Submitted:
-                            submitAnswer();
-                            break;
-                    }
-                    event.preventDefault(); // デフォルトのEnter動作を無効化
-                    break;
-                case 'Tab':
-                    // テスト用(Tabキーで回答欄の内容をキューに追加する)
-                    if (answerInput.value.length > 0) {
-                        playerInstance.enqueue(answerInput.value);
-                        event.preventDefault(); // デフォルトのタブ動作を無効化
-                    }
-                    break;
-                default:
-                    break;
-            }
-        });
-        answerInput.addEventListener('input', (event) => {
-            if (answerInput.value.length > 0) {
-                state.step = Steps.Writing;
-            } else {
-                state.step = Steps.Ready;
-            }
-        });
+        switch (event.key) {
+            case 'Enter':
+                switch (state.step) {
+                    case Steps.Init:
+                        state.step = Steps.Ready;
+                        review(false);
+                        break;
+                    case Steps.Ready:
+                        review(true);
+                        break;
+                    case Steps.Writing:
+                    case Steps.Submitted:
+                        submitAnswer();
+                        break;
+                }
+                event.preventDefault(); // デフォルトのEnter動作を無効化
+                break;
+            case 'Tab':
+                // テスト用(Tabキーで回答欄の内容をキューに追加する)
+                if (answerInput.value.length > 0) {
+                    playerInstance.enqueue(answerInput.value);
+                    event.preventDefault(); // デフォルトのタブ動作を無効化
+                }
+                break;
+            default:
+                break;
+        }
+    });
+    answerInput.addEventListener('input', (event) => {
+        if (answerInput.value.length > 0) {
+            state.step = Steps.Writing;
+        } else {
+            state.step = Steps.Ready;
+        }
+    });
 
-        answerInput.value = '';
-        answerInput.focus(); // 初期フォーカスを設定する
-        answerInput.addEventListener('blur', (event) => {
-            if (!state.activeDialog) {
-                answerInput.focus(); // フォーカスを維持する
-            }
-        });
-    }
+    answerInput.value = '';
+    answerInput.focus(); // 初期フォーカスを設定する
+    answerInput.addEventListener('blur', (event) => {
+        if (!getActiveDialog()) {
+            answerInput.focus(); // フォーカスを維持する
+        }
+    });
 
     // 回答ボタン
-    const answerButton = document.querySelector('.answer-button');
-    if (answerButton) {
-        answerButton.addEventListener('click', () => {
-            submitAnswer();
-        });
-    }
+    elements.answerButton.addEventListener('click', () => {
+        submitAnswer();
+    });
 
     // リセットボタン
-    const resetButton = document.querySelector('.reset-button');
-    if (resetButton) {
-        resetButton.addEventListener('click', () => {
-            reset();
-        });
-    }
+    elements.resetButton.addEventListener('click', () => {
+        reset();
+    });
 
     // 学習履歴ダイアログ、学習履歴ボタン、学習履歴ダイアログの閉じるボタン
-    const historyDialog = document.querySelector('.history-dialog');
-    const historyButton = document.querySelector('.history-button');
-    const historyCloseButton = document.querySelector('.history-close-button');
-    if (historyDialog && historyButton && historyCloseButton) {
-        historyButton.addEventListener('click', () => {
-            renderLearningHistory();
-            historyDialog.hidden = false;
-            historyCloseButton.focus();
-        });
-        historyCloseButton.addEventListener('click', () => {
-            historyDialog.hidden = true;
-            setTimeout(() => {
-                document.querySelector('.answer-input')?.focus();
-            }, 0);
-        });
-    }
+    const historyDialog = elements.historyDialog;
+    elements.historyButton.addEventListener('click', () => {
+        renderLearningHistory();
+        historyDialog.hidden = false;
+        elements.historyCloseButton.focus();
+    });
+    elements.historyCloseButton.addEventListener('click', () => {
+        historyDialog.hidden = true;
+        setTimeout(() => {
+            elements.answerInput.focus();
+        }, 0);
+    });
 
     // 見直しボタン
-    const reviewButton = document.querySelector('.review-button');
-    if (reviewButton) {
-        reviewButton.addEventListener('click', () => {
-            if (state.step === Steps.Init) {
-                state.step = Steps.Ready;
-                review(false);
-            } else {
-                review(true);
-            }
-        });
-    }
+    elements.reviewButton.addEventListener('click', () => {
+        if (state.step === Steps.Init) {
+            state.step = Steps.Ready;
+            review(false);
+        } else {
+            review(true);
+        }
+    });
 
     // 左右反転ボタン
-    const flipButton = document.querySelector('.flip-mode');
-    if (flipButton) {
-        flipButton.addEventListener('click', () => {
-            playerInstance.setFlipMode(flipButton.checked);
-            saveSettings();
-        });
-        if (settings.flipMode !== undefined) {
-            flipButton.checked = settings.flipMode;
-            playerInstance.setFlipMode(flipButton.checked);
-        }
+    const flipButton = elements.flipButton;
+    flipButton.addEventListener('click', () => {
+        playerInstance.setFlipMode(flipButton.checked);
+        saveSettings();
+    });
+    if (settings.flipMode !== undefined) {
+        flipButton.checked = settings.flipMode;
+        playerInstance.setFlipMode(flipButton.checked);
     }
 
     // 文字数(最小/最大)
-    const minLengthInput = document.querySelector('.word-length-min');
-    const maxLengthInput = document.querySelector('.word-length-max');
-    if (minLengthInput && maxLengthInput) {
-        const handler = function (e) {
-            let minLength = parseInt(minLengthInput.value, 10);
-            let maxLength = parseInt(maxLengthInput.value, 10);
-            if (e.target == minLengthInput && minLength > maxLength) {
-                maxLengthInput.value = minLength; // 最大値を最小値に合わせる
-                maxLength = minLength;
-            }
-            if (e.target == maxLengthInput && maxLength < minLength) {
-                minLengthInput.value = maxLength; // 最小値を最大値に合わせる
-                minLength = maxLength;
-            }
-            if (!isNaN(minLength) && !isNaN(maxLength)) {
-                const temp = filterWordsByLength(state.allWords, minLength, maxLength);
-                state.currentWords = new ObservableArray(filterAnsweredWords(temp));
-                state.currentWords.shuffle();
-                saveSettings();
-            } else {
-                console.error('無効な文字数の範囲です。');
-            }
-        };
-        minLengthInput.addEventListener('change', handler);
-        maxLengthInput.addEventListener('change', handler);
+    const minLengthInput = elements.minLengthInput;
+    const maxLengthInput = elements.maxLengthInput;
+    const lengthChangeHandler = function (e) {
+        let minLength = parseInt(minLengthInput.value, 10);
+        let maxLength = parseInt(maxLengthInput.value, 10);
+        if (e.target == minLengthInput && minLength > maxLength) {
+            maxLengthInput.value = minLength; // 最大値を最小値に合わせる
+            maxLength = minLength;
+        }
+        if (e.target == maxLengthInput && maxLength < minLength) {
+            minLengthInput.value = maxLength; // 最小値を最大値に合わせる
+            minLength = maxLength;
+        }
+        if (!isNaN(minLength) && !isNaN(maxLength)) {
+            const temp = filterWordsByLength(state.allWords, minLength, maxLength);
+            state.currentWords = new ObservableArray(filterAnsweredWords(temp));
+            state.currentWords.shuffle();
+            saveSettings();
+        } else {
+            console.error('無効な文字数の範囲です。');
+        }
+    };
+    minLengthInput.addEventListener('change', lengthChangeHandler);
+    maxLengthInput.addEventListener('change', lengthChangeHandler);
 
-        if (settings.wordLengthMin && minLengthInput.disabled === false) {
-            minLengthInput.value = settings.wordLengthMin;
-        }
-        if (settings.wordLengthMax && maxLengthInput.disabled === false) {
-            maxLengthInput.value = settings.wordLengthMax;
-        }
+    if (settings.wordLengthMin && minLengthInput.disabled === false) {
+        minLengthInput.value = settings.wordLengthMin;
+    }
+    if (settings.wordLengthMax && maxLengthInput.disabled === false) {
+        maxLengthInput.value = settings.wordLengthMax;
     }
 
     // 速度調整
-    const playSpeedSelector = document.querySelector('.play-speed');
-    if (playSpeedSelector) {
-        playSpeedSelector.addEventListener('change', () => {
-            playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
-            saveSettings();
-        });
-        if (settings.playSpeed !== undefined) {
-            playSpeedSelector.value = settings.playSpeed;
-            playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
-        }
+    const playSpeedSelector = elements.playSpeedSelector;
+    playSpeedSelector.addEventListener('change', () => {
+        playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
+        saveSettings();
+    });
+    if (settings.playSpeed !== undefined) {
+        playSpeedSelector.value = settings.playSpeed;
+        playerInstance.setPlaySpeed(parseFloat(playSpeedSelector.value));
     }
 
     // 間の調整
-    const playIntervalSelector = document.querySelector('.play-interval');
-    if (playIntervalSelector) {
-        playIntervalSelector.addEventListener('change', () => {
-            const intervalValue = parseFloat(playIntervalSelector.value);
-            playerInstance.setInterval(intervalValue);
-            saveSettings();
-        });
-        if (settings.playInterval !== undefined) {
-            playIntervalSelector.value = settings.playInterval;
-            playerInstance.setInterval(parseFloat(playIntervalSelector.value));
-        }
+    const playIntervalSelector = elements.playIntervalSelector;
+    playIntervalSelector.addEventListener('change', () => {
+        const intervalValue = parseFloat(playIntervalSelector.value);
+        playerInstance.setInterval(intervalValue);
+        saveSettings();
+    });
+    if (settings.playInterval !== undefined) {
+        playIntervalSelector.value = settings.playInterval;
+        playerInstance.setInterval(parseFloat(playIntervalSelector.value));
     }
 
     // 正答率
-    const accuracyRateDisplay = document.querySelector('.accuracy-rate');
-    if (accuracyRateDisplay) {
-        accuracyRateDisplay.textContent = '0 / 0'; // 初期表示
-    }
+    elements.accuracyRateDisplay.textContent = '0 / 0'; // 初期表示
 
     // 終了ボタン
-    const endButton = document.querySelector('.end-button');
-    if (endButton) {
-        endButton.addEventListener('click', () => {
-            state.step = Steps.Evaluation;
-            finishSession();
-        });
-    }
+    elements.endButton.addEventListener('click', () => {
+        state.step = Steps.Evaluation;
+        finishSession();
+    });
 
     // 評価ダイアログ、評価ダイアログの閉じるボタン
-    const evaluationDialog = document.querySelector('.evaluation-dialog');
-    const evaluationCloseButton = document.querySelector('.evaluation-close-button');
-    if (evaluationDialog && evaluationCloseButton) {
-        evaluationCloseButton.addEventListener('click', () => {
-            evaluationDialog.hidden = true;
-            reset();
-            document.querySelector('.answer-input')?.focus();
-        });
-    }
+    const evaluationDialog = elements.evaluationDialog;
+    elements.evaluationCloseButton.addEventListener('click', () => {
+        evaluationDialog.hidden = true;
+        reset();
+        elements.answerInput.focus();
+    });
 
     // 単語リストのフィルタリング
-    if (minLengthInput && maxLengthInput) {
-        const minLength = parseInt(minLengthInput.value, 10);
-        const maxLength = parseInt(maxLengthInput.value, 10);
-        state.currentWords = new ObservableArray(filterWordsByLength(state.allWords, minLength, maxLength));
-        state.currentWords.shuffle();
-    }
+    const initialMinLength = parseInt(minLengthInput.value, 10);
+    const initialMaxLength = parseInt(maxLengthInput.value, 10);
+    state.currentWords = new ObservableArray(filterWordsByLength(state.allWords, initialMinLength, initialMaxLength));
+    state.currentWords.shuffle();
 }
 
 // Load the word list from a JSON file
@@ -498,59 +382,50 @@ function filterAnsweredWords(words) {
 }
 
 function submitAnswer() {
-    const answerInput = document.querySelector('.answer-input');
-    const subtitleText = document.querySelector('.subtitle-text');
-    if (answerInput) {
-        switch (state.step) {
-            case Steps.Writing:
-                const inputWord = answerInput.value.trim().hiraganaToKatakana();
+    const { answerInput, subtitleText } = elements;
+    switch (state.step) {
+        case Steps.Writing:
+            const inputWord = answerInput.value.trim().hiraganaToKatakana();
 
-                if (inputWord === '' || state.currentWord === null) {
-                    return; // 空の回答は無視
-                }
+            if (inputWord === '' || state.currentWord === null) {
+                return; // 空の回答は無視
+            }
 
-                state.addAnsweredCharacters(state.currentWord.length);
-                state.answeredWords.add(state.currentWord); // 回答済みの単語をセットに追加
+            state.addAnsweredCharacters(state.currentWord.length);
+            state.answeredWords.add(state.currentWord); // 回答済みの単語をセットに追加
 
-                // 正誤判定
-                if (inputWord == state.currentWord) {
-                    answerInput.classList.add('correct');
-                    if (subtitleText) {
-                        subtitleText.classList.add('correct');
-                    }
-                    state.incrementCorrectCount(); // 正解数を増やす
-                } else {
-                    answerInput.classList.add('incorrect');
-                    if (subtitleText) {
-                        subtitleText.classList.add('incorrect');
-                    }
-                    state.incrementIncorrectCount(); // 不正解数を増やす
-                }
+            // 正誤判定
+            if (inputWord == state.currentWord) {
+                answerInput.classList.add('correct');
+                subtitleText.classList.add('correct');
+                state.incrementCorrectCount(); // 正解数を増やす
+            } else {
+                answerInput.classList.add('incorrect');
+                subtitleText.classList.add('incorrect');
+                state.incrementIncorrectCount(); // 不正解数を増やす
+            }
 
-                // 正しい答えを表示する
-                if (subtitleText) {
-                    subtitleText.textContent = state.currentWord;
-                }
+            // 正しい答えを表示する
+            subtitleText.textContent = state.currentWord;
 
-                // ステップを進める
-                state.step = Steps.Submitted;
-                break;
-            case Steps.Submitted:
-                playerInstance.clearQueue(); // キューをクリアする
-                state.currentWords.pop(); // 回答済みの単語をリストから削除する
+            // ステップを進める
+            state.step = Steps.Submitted;
+            break;
+        case Steps.Submitted:
+            playerInstance.clearQueue(); // キューをクリアする
+            state.currentWords.pop(); // 回答済みの単語をリストから削除する
 
-                // 次の単語を再生するためにキューに追加
-                if (state.currentWords.length === 0) {
-                    state.step = Steps.Evaluation;
-                    finishSession(); // セッションを終了する
-                    return;
-                } else {
-                    playerInstance.enqueue(state.currentWords.peek()); // 次の単語をキューに追加
-                }
+            // 次の単語を再生するためにキューに追加
+            if (state.currentWords.length === 0) {
+                state.step = Steps.Evaluation;
+                finishSession(); // セッションを終了する
+                return;
+            } else {
+                playerInstance.enqueue(state.currentWords.peek()); // 次の単語をキューに追加
+            }
 
-                state.step = Steps.Ready;
-                break;
-        }
+            state.step = Steps.Ready;
+            break;
     }
 }
 
@@ -572,15 +447,7 @@ function review(increment = true) {
 function reset() {
     state.currentWords.shuffle(); // 単語リストをシャッフルする
     state.step = Steps.Init; // ステップを初期化する
-    state._correctCount = 0;
-    state._incorrectCount = 0;
-    state._reviewCount = 0;
-    state._answeredCharacterCount = 0;
-    state.sessionStartedAt = Date.now();
-    const accuracyRateDisplay = document.querySelector('.accuracy-rate');
-    if (accuracyRateDisplay) {
-        accuracyRateDisplay.textContent = '0 / 0';
-    }
+    state.resetCounters();
     playerInstance.clearQueue(); // キューをクリアする
     playerInstance.resetCamera(); // カメラをリセットする
     playerInstance.restPose();
@@ -596,20 +463,17 @@ function finishSession() {
     const secondsPerCharacter = characters > 0 ? (elapsedSeconds / characters) : 0;
     const grade = getGrade(accuracyRate);
 
-    document.querySelector('.evaluation-answered-words').textContent = totalAttempts;
-    document.querySelector('.evaluation-correct-words').textContent = state.correctCount;
-    document.querySelector('.evaluation-accuracy').textContent = `${accuracyRate.toFixed(2)}%`;
-    document.querySelector('.evaluation-duration').textContent = `${minutes}分${String(seconds).padStart(2, '0')}秒`;
-    document.querySelector('.evaluation-characters').textContent = `${characters}字`;
-    document.querySelector('.evaluation-time-per-character').textContent = `${secondsPerCharacter.toFixed(1)}秒`;
-    document.querySelector('.evaluation-reviews').textContent = `${state.reviewCount}回`;
-    document.querySelector('.evaluation-grade-value').textContent = grade;
+    elements.evaluationAnsweredWords.textContent = totalAttempts;
+    elements.evaluationCorrectWords.textContent = state.correctCount;
+    elements.evaluationAccuracy.textContent = `${accuracyRate.toFixed(2)}%`;
+    elements.evaluationDuration.textContent = `${minutes}分${String(seconds).padStart(2, '0')}秒`;
+    elements.evaluationCharacters.textContent = `${characters}字`;
+    elements.evaluationTimePerCharacter.textContent = `${secondsPerCharacter.toFixed(1)}秒`;
+    elements.evaluationReviews.textContent = `${state.reviewCount}回`;
+    elements.evaluationGradeValue.textContent = grade;
 
-    const evaluationDialog = document.querySelector('.evaluation-dialog');
-    if (evaluationDialog) {
-        evaluationDialog.hidden = false;
-        playerInstance.clearQueue(); // キューをクリアする
-    }
+    elements.evaluationDialog.hidden = false;
+    playerInstance.clearQueue(); // キューをクリアする
 
     // LocalStorageに結果を保存する
     const sessionResult = {
@@ -654,13 +518,13 @@ function renderLearningHistory() {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
 
-    document.querySelector('.history-sessions').textContent = `${sessions}回`;
-    document.querySelector('.history-words').textContent = `${words}個`;
-    document.querySelector('.history-accuracy').textContent = `${(words > 0 ? (correct / words) * 100 : 0).toFixed(2)}%`;
-    document.querySelector('.history-duration').textContent = `${hours}時間${String(remainingMinutes).padStart(2, '0')}分${String(remainingSeconds).padStart(2, '0')}秒`;
-    document.querySelector('.history-characters').textContent = `${total('n_chars')}字`;
-    document.querySelector('.history-reviews').textContent = `${total('n_reviews')}回`;
-    document.querySelector('.history-empty').hidden = sessions > 0;
+    elements.historySessions.textContent = `${sessions}回`;
+    elements.historyWords.textContent = `${words}個`;
+    elements.historyAccuracy.textContent = `${(words > 0 ? (correct / words) * 100 : 0).toFixed(2)}%`;
+    elements.historyDuration.textContent = `${hours}時間${String(remainingMinutes).padStart(2, '0')}分${String(remainingSeconds).padStart(2, '0')}秒`;
+    elements.historyCharacters.textContent = `${total('n_chars')}字`;
+    elements.historyReviews.textContent = `${total('n_reviews')}回`;
+    elements.historyEmpty.hidden = sessions > 0;
 }
 
 function getGrade(accuracyRate) {
@@ -672,36 +536,31 @@ function getGrade(accuracyRate) {
 
 function saveSettings() {
     const settings = {
-        wordLengthMin: document.querySelector('.word-length-min')?.value || 2,
-        wordLengthMax: document.querySelector('.word-length-max')?.value || 5,
-        playSpeed: document.querySelector('.play-speed')?.value || 1.0,
-        playInterval: document.querySelector('.play-interval')?.value || 0,
-        flipMode: document.querySelector('.flip-mode')?.checked || false
+        wordLengthMin: elements.minLengthInput.value || 2,
+        wordLengthMax: elements.maxLengthInput.value || 5,
+        playSpeed: elements.playSpeedSelector.value || 1.0,
+        playInterval: elements.playIntervalSelector.value || 0,
+        flipMode: elements.flipButton.checked || false
     };
 
     localStorage.setItem('settings', JSON.stringify(settings));
 }
 
 function refreshCurrentWords() {
-    const minLength = document.querySelector('.word-length-min')?.value || 2;
-    const maxLength = document.querySelector('.word-length-max')?.value || 5;
+    const minLength = elements.minLengthInput.value || 2;
+    const maxLength = elements.maxLengthInput.value || 5;
 
     const temp = filterWordsByLength(state.allWords, minLength, maxLength);
     state.currentWords = new ObservableArray(filterAnsweredWords(temp));
     state.currentWords.shuffle();
 }
 
-/**
- * DOMContentLoaded を待機する Promise を返す
- */
 function waitForDOMContentLoaded() {
     return new Promise((resolve) => {
         if (document.readyState !== 'loading') {
-            // すでに DOMContentLoaded 以降のフェーズにある場合は即座に resolve
             console.info('DOMContentLoaded event has already fired');
             resolve();
         } else {
-            // まだ読み込み中の場合のみイベントを1度だけ待機
             document.addEventListener('DOMContentLoaded', () => {
                 console.info('DOMContentLoaded event fired');
                 resolve();
@@ -716,13 +575,11 @@ async function main() {
         playerInstance.loadAsync(MODEL_PATH),
         waitForDOMContentLoaded()
     ]);
-    if (canvas) {
-        playerInstance.bind(canvas);
-        playerInstance.run();
-        playerInstance.restPose();
-        setupListeners();
-        state.step = Steps.Init;
-    }
+    playerInstance.bind(elements.canvas);
+    playerInstance.run();
+    playerInstance.restPose();
+    setupListeners();
+    state.step = Steps.Init;
 }
 
 main();
