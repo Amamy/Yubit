@@ -10,14 +10,13 @@ const SCALE_FACTOR = 1.25; // モデルのスケールを調整するための�
 const MIN_DURATION = 0.5; // 最小再生時間（秒）
 
 export class Player extends EventTarget {
-    #previouslyReversed = false;
-
     constructor() {
         super();
         this.scene = new THREE.Scene();
 
         this.mixer = null;
-        this.actions = {};
+        this.actions = new Map();
+        this.actionsClone = new Map();
 
         this.queue = [];
         this.dakuonCount = 0;
@@ -93,7 +92,7 @@ export class Player extends EventTarget {
                         const action = this.mixer.clipAction(clip);
                         action.setLoop(THREE.LoopOnce, 1); // 1回だけ再生
                         action.clampWhenFinished = true; // 終了時に最後のフレームで止まる
-                        this.actions[clip.name] = action;
+                        this.actions.set(clip.name, action);
                         if (clip.duration < MIN_DURATION) {
                             setClipDuration(clip, MIN_DURATION);
                         }
@@ -158,13 +157,11 @@ export class Player extends EventTarget {
             return;
         }
 
+        console.log(`再生中: `, item);
+
         // インターバル
         if (this.interval > 0) {
-            if (this.#previouslyReversed) {
-                await sleep(this.interval * 1000 * 0.25);
-            } else {
-                await sleep(this.interval * 1000);
-            }
+            await sleep(this.interval * 1000);
         }
 
         // 同時再生
@@ -175,24 +172,12 @@ export class Player extends EventTarget {
             return;
         }
 
-        // 逆再生
-        if (item.reverse) {
-            item.action.time = item.action.getClip().duration;
-            item.action.setEffectiveTimeScale(-1.5 * this.speedFactor);
-            this.#previouslyReversed = true;
-        } else {
-            item.action.setEffectiveTimeScale(1 * this.speedFactor);
-            this.#previouslyReversed = false;
-        }
         // 前のアクションからクロスフェードしつつ新しいアクションを再生する
+        console.log(`前のアクション: `, this.previousItem);
+        console.log(`新しいアクション: `, item);
         if (this.previousItem) {
-            if (item.action == this.previousItem.action) {
+            if (item.action === this.previousItem.action) {
                 switch (REPEAT_TYPE_MAP[item.char]) {
-                    case RepetitionTypes.Repeat:
-                    case RepetitionTypes.RepeatF:
-                        item.action.paused = false;
-                        item.action.play();
-                        break;
                     case RepetitionTypes.SnapXMinus:
                     case RepetitionTypes.SnapXPlus:
                     case RepetitionTypes.SnapY:
@@ -212,6 +197,8 @@ export class Player extends EventTarget {
         this.isPlaying = true;
     }
 
+    #lastEnqueuedItem = null;
+
     /**
      * 単語をキューに追加して再生する
      * @param {string} word - 再生する単語
@@ -221,16 +208,16 @@ export class Player extends EventTarget {
 
         for (let i = 0; i < word.length; i++) {
             const char = word[i];
-            const prevChar = i > 0 ? word[i - 1] : this.previousItem?.char;
+            const prevChar = i > 0 ? word[i - 1] : this.#lastEnqueuedItem?.char;
 
             const item = {
                 action: null,
                 char: char,
-                reverse: false,
-                simultaneous: false
+                simultaneous: false,
+                clone: false
             };
 
-            item.action = this.actions[char];
+            item.action = this.actions.get(char);
 
             if (item.action) {
                 // 同じ文字が連続する場合
@@ -238,25 +225,36 @@ export class Player extends EventTarget {
                     const decorator = {
                         action: null,
                         char: null,
-                        reverse: false,
                         simultaneous: true
                     };
                     switch (REPEAT_TYPE_MAP[char]) {
                         case RepetitionTypes.Repeat:
                         case RepetitionTypes.RepeatF:
-                            this.queue.push({ ...item, reverse: true });
+                            if (!this.#lastEnqueuedItem?.clone) {
+                                let clone = this.actionsClone.get(char);
+                                if (!clone) {
+                                    const newClip = item.action.getClip().clone();
+                                    const newAction = this.mixer.clipAction(newClip);
+                                    newAction.setLoop(THREE.LoopOnce, 1);
+                                    newAction.clampWhenFinished = true;
+                                    this.actionsClone.set(char, newAction);
+                                    clone = newAction;
+                                }
+                                item.action = clone;
+                                item.clone = true;
+                            }
                             break;
                         case RepetitionTypes.SnapXMinus:
-                            decorator.action = this.actions['SnapX-'];
+                            decorator.action = this.actions.get('SnapX-');
                             break;
                         case RepetitionTypes.SnapXPlus:
-                            decorator.action = this.actions['SnapX+'];
+                            decorator.action = this.actions.get('SnapX+');
                             break;
                         case RepetitionTypes.SnapY:
-                            decorator.action = this.actions['SnapY'];
+                            decorator.action = this.actions.get('SnapY');
                             break;
                         case RepetitionTypes.SnapZ:
-                            decorator.action = this.actions['SnapZ'];
+                            decorator.action = this.actions.get('SnapZ');
                             break;
                         default:
                             break;
@@ -267,6 +265,7 @@ export class Player extends EventTarget {
                 }
 
                 this.queue.push(item);
+                this.#lastEnqueuedItem = item;
             }
         }
 
@@ -279,6 +278,7 @@ export class Player extends EventTarget {
 
     clearQueue() {
         this.queue.length = 0;
+        this.#lastEnqueuedItem = null;
         this.isPlaying = false;
     }
 
