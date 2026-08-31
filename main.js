@@ -129,10 +129,15 @@ function loadSettings() {
     }
 
     try {
-        parseInt(settings.wordLengthMin);
-        parseInt(settings.wordLengthMax);
-        parseFloat(settings.playSpeed);
-        parseFloat(settings.playInterval);
+        const min = parseInt(settings.wordLengthMin);
+        const max = parseInt(settings.wordLengthMax);
+        const speed = parseFloat(settings.playSpeed);
+        const interval = parseFloat(settings.playInterval);
+
+        if ([min, max, speed, interval].some(Number.isNaN)) {
+            console.warn('Invalid settings in LocalStorage, falling back to defaults:', settings);
+            return defaultSettings;
+        }
     } catch (error) {
         console.error('Error loading settings from LocalStorage:', settings, error);
         return defaultSettings;
