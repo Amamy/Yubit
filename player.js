@@ -60,7 +60,7 @@ export class Player extends EventTarget {
 
                     // アニメーションがある場合はミキサーを作成
                     this.mixer = new THREE.AnimationMixer(model);
-                    console.info("モデルの読み込みに成功　アニメーションの数:", gltf.animations.length);
+                    console.debug("モデルの読み込みに成功　アニメーションの数:", gltf.animations.length);
                     gltf.animations.forEach((clip) => {
                         if (clip.name == '゛') {
                             const filteredTracks = clip.tracks.filter(track => {
@@ -102,7 +102,7 @@ export class Player extends EventTarget {
                     resolve();
                 },
                 (progress) => {
-                    console.info('モデル読み込み中:', (progress.loaded / progress.total * 100) + '%');
+                    console.debug('モデル読み込み中:', (progress.loaded / progress.total * 100) + '%');
                 },
                 (error) => {
                     console.error('モデル読み込みでエラーが発生しました:', error);
@@ -130,7 +130,7 @@ export class Player extends EventTarget {
     }
 
     onFinished(event) {
-        console.info(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event);
+        console.debug(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event);
 
         switch (event.action.getClip().name) {
             case 'SnapX+':
@@ -157,8 +157,6 @@ export class Player extends EventTarget {
             return;
         }
 
-        console.log(`再生中: `, item);
-
         // インターバル
         if (this.interval > 0) {
             await sleep(this.interval * 1000);
@@ -173,8 +171,6 @@ export class Player extends EventTarget {
         }
 
         // 前のアクションからクロスフェードしつつ新しいアクションを再生する
-        console.log(`前のアクション: `, this.previousItem);
-        console.log(`新しいアクション: `, item);
         if (this.previousItem) {
             if (item.action === this.previousItem.action) {
                 switch (REPEAT_TYPE_MAP[item.char]) {
@@ -270,7 +266,7 @@ export class Player extends EventTarget {
             }
         }
 
-        console.info(`キューに追加: ${word} (長さ: ${this.queue.length})`);
+        console.debug(`キューに追加: ${word} (長さ: ${this.queue.length})`);
 
         if (!this.isPlaying) {
             this.resume();

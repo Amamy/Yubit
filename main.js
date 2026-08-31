@@ -139,7 +139,7 @@ function loadSettings() {
         return defaultSettings;
     }
 
-    console.info('Loaded settings from LocalStorage:', settings);
+    console.debug('Loaded settings from LocalStorage:', settings);
 
     return settings;
 }
@@ -364,7 +364,7 @@ async function loadWordList() {
         if (Array.isArray(data.words)) {
             state.allWords.length = 0; // Clear the existing list
             state.allWords.push(...data.words); // Populate with new words
-            console.info(`Loaded ${state.allWords.length} words from ${WORD_LIST_PATH}`);
+            console.debug(`Loaded ${state.allWords.length} words from ${WORD_LIST_PATH}`);
         } else {
             console.error('Invalid word list format in JSON.');
         }
@@ -558,11 +558,11 @@ function refreshCurrentWords() {
 function waitForDOMContentLoaded() {
     return new Promise((resolve) => {
         if (document.readyState !== 'loading') {
-            console.info('DOMContentLoaded event has already fired');
+            console.debug('DOMContentLoaded event has already fired');
             resolve();
         } else {
             document.addEventListener('DOMContentLoaded', () => {
-                console.info('DOMContentLoaded event fired');
+                console.debug('DOMContentLoaded event fired');
                 resolve();
             }, { once: true });
         }
