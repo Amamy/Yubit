@@ -58,7 +58,6 @@ function cacheElements() {
         assertTrue(value !== null, `DOM要素が見つかりません: ${key}`);
     }
 }
-cacheElements();
 
 // ダイアログの表示状態は DOM に紐づくため main.js 側で解決する
 function getActiveDialog() {
@@ -575,6 +574,7 @@ async function main() {
         playerInstance.loadAsync(MODEL_PATH),
         waitForDOMContentLoaded()
     ]);
+    cacheElements();
     playerInstance.bind(elements.canvas);
     playerInstance.run();
     playerInstance.restPose();
