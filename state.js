@@ -17,7 +17,7 @@ export class GameState extends EventTarget {
 
     #allWords = [];
     #currentWords = null;
-    #step = undefined;
+    #step = Steps.Init;
     #reviewCount = 0;
     #correctCount = 0;
     #incorrectCount = 0;

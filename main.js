@@ -584,7 +584,6 @@ async function main() {
     playerInstance.run();
     playerInstance.restPose();
     setupListeners();
-    state.step = Steps.Init;
 }
 
 main();
