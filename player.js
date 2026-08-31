@@ -185,7 +185,8 @@ export class Player extends EventTarget {
                         item.action.reset().play();
                         break;
                     default:
-                        return;
+                        item.action.reset().play();
+                        break;
                 }
             } else {
                 this.previousItem.action.crossFadeTo(item.action.reset(), TIME_CROSS_FADE / this.speedFactor, false).play();
