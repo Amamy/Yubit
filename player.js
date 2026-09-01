@@ -10,15 +10,13 @@ const SCALE_FACTOR = 1.25; // モデルのスケールを調整するための�
 const MIN_DURATION = 0.5; // 最小再生時間（秒）
 
 export class Player extends EventTarget {
-    #previouslyReversed = false;
-
-    constructor(canvas) {
+    constructor() {
         super();
         this.scene = new THREE.Scene();
-        this.bind(canvas);
 
         this.mixer = null;
-        this.actions = {};
+        this.actions = new Map();
+        this.actionsClone = new Map();
 
         this.queue = [];
         this.dakuonCount = 0;
@@ -49,70 +47,69 @@ export class Player extends EventTarget {
         this.scene.add(directionalLight);
     }
 
-    load(path) {
-        const loader = new GLTFLoader();
+    loadAsync(path) {
+        return new Promise((resolve, reject) => {
+            const loader = new GLTFLoader();
+            loader.load(
+                path,
+                (gltf) => {
+                    // 読み込み成功時の処理
+                    const model = gltf.scene;
+                    model.scale.set(SCALE_FACTOR, SCALE_FACTOR, SCALE_FACTOR); // モデルのスケールを調整（必要に応じて変更）
+                    this.scene.add(model);
 
-        loader.load(
-            path,
-            (gltf) => {
-                // 読み込み成功時の処理
-                const model = gltf.scene;
-                // model.position.set(0, -0.15, 0); // モデルの位置を調整（必要に応じて変更）
-                model.scale.set(SCALE_FACTOR, SCALE_FACTOR, SCALE_FACTOR); // モデルのスケールを調整（必要に応じて変更）
-                this.scene.add(model);
+                    // アニメーションがある場合はミキサーを作成
+                    this.mixer = new THREE.AnimationMixer(model);
+                    console.debug("モデルの読み込みに成功　アニメーションの数:", gltf.animations.length);
+                    gltf.animations.forEach((clip) => {
+                        if (clip.name == '゛') {
+                            const filteredTracks = clip.tracks.filter(track => {
+                                return track.name.includes("root");
+                            });
+                            clip.tracks = filteredTracks;
+                        }
+                        if (clip.name == "SnapX-" || clip.name == "SnapX+") {
+                            const filteredTracks = clip.tracks.filter(track => {
+                                return track.name.includes("DEF-handR.quaternion");
+                            });
+                            filteredTracks.forEach(track => restrictToAxis(track, 'x'));
+                            clip.tracks = filteredTracks;
+                        }
+                        if (clip.name == "SnapY") {
+                            const filteredTracks = clip.tracks.filter(track => {
+                                return track.name.includes("DEF-handR.quaternion");
+                            });
+                            filteredTracks.forEach(track => restrictToAxis(track, 'y'));
+                            clip.tracks = filteredTracks;
+                        }
+                        if (clip.name == "SnapZ") {
+                            const filteredTracks = clip.tracks.filter(track => {
+                                return track.name.includes("DEF-handR.quaternion");
+                            });
+                            filteredTracks.forEach(track => restrictToAxis(track, 'z'));
+                            clip.tracks = filteredTracks;
+                        }
+                        const action = this.mixer.clipAction(clip);
+                        action.setLoop(THREE.LoopOnce, 1); // 1回だけ再生
+                        action.clampWhenFinished = true; // 終了時に最後のフレームで止まる
+                        this.actions.set(clip.name, action);
+                        if (clip.duration < MIN_DURATION) {
+                            setClipDuration(clip, MIN_DURATION);
+                        }
+                    });
 
-                // アニメーションがある場合はミキサーを作成
-                this.mixer = new THREE.AnimationMixer(model);
-                console.log("モデルの読み込みに成功　アニメーションの数:", gltf.animations.length);
-                gltf.animations.forEach((clip) => {
-                    if (clip.name == '゛') {
-                        const filteredTracks = clip.tracks.filter(track => {
-                            return track.name.includes("root");
-                        });
-                        clip.tracks = filteredTracks;
-                    }
-                    if (clip.name == "SnapX-" || clip.name == "SnapX+") {
-                        const filteredTracks = clip.tracks.filter(track => {
-                            return track.name.includes("DEF-handR.quaternion");
-                        });
-                        filteredTracks.forEach(track => restrictToAxis(track, 'x'));
-                        clip.tracks = filteredTracks;
-                    }
-                    if (clip.name == "SnapY") {
-                        const filteredTracks = clip.tracks.filter(track => {
-                            return track.name.includes("DEF-handR.quaternion");
-                        });
-                        filteredTracks.forEach(track => restrictToAxis(track, 'y'));
-                        clip.tracks = filteredTracks;
-                    }
-                    if (clip.name == "SnapZ") {
-                        const filteredTracks = clip.tracks.filter(track => {
-                            return track.name.includes("DEF-handR.quaternion");
-                        });
-                        filteredTracks.forEach(track => restrictToAxis(track, 'z'));
-                        clip.tracks = filteredTracks;
-                    }
-                    const action = this.mixer.clipAction(clip);
-                    action.setLoop(THREE.LoopOnce, 1); // 1回だけ再生
-                    action.clampWhenFinished = true; // 終了時に最後のフレームで止まる
-                    this.actions[clip.name] = action;
-                    if (clip.duration < MIN_DURATION) {
-                        setClipDuration(clip, MIN_DURATION);
-                    }
-                });
-
-                this.mixer.addEventListener('finished', this.onFinished.bind(this));
-                this.dispatchEvent(new Event('loadingFinished'));
-            },
-            (progress) => {
-                console.log('モデル読み込み中:', (progress.loaded / progress.total * 100) + '%');
-            },
-            (error) => {
-                console.error('モデル読み込みでエラーが発生しました:', error);
-            }
-        )
-
-        return this;
+                    this.mixer.addEventListener('finished', this.onFinished.bind(this));
+                    resolve();
+                },
+                (progress) => {
+                    console.debug('モデル読み込み中:', (progress.loaded / progress.total * 100) + '%');
+                },
+                (error) => {
+                    console.error('モデル読み込みでエラーが発生しました:', error);
+                    reject(error);
+                }
+            );
+        });
     }
 
     run() {
@@ -133,7 +130,7 @@ export class Player extends EventTarget {
     }
 
     onFinished(event) {
-        console.log(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event);
+        console.debug(`アクションの完了 (${event.action.getClip().name}) at time ${Math.round(this.mixer.time * 1000) / 1000}:`, event);
 
         switch (event.action.getClip().name) {
             case 'SnapX+':
@@ -162,39 +159,24 @@ export class Player extends EventTarget {
 
         // インターバル
         if (this.interval > 0) {
-            if (this.#previouslyReversed) {
-                await sleep(this.interval * 1000 * 0.25);
-            } else {
-                await sleep(this.interval * 1000);
-            }
+            await sleep(this.interval * 1000);
         }
+
+        // 速度調整
+        item.action.setEffectiveTimeScale(1 * this.speedFactor);
 
         // 同時再生
         if (item.simultaneous) {
             item.action.blendMode = THREE.AdditiveAnimationBlendMode;
-            item.action.reset().fadeIn(TIME_CROSS_FADE).play();
+            item.action.reset().fadeIn(TIME_CROSS_FADE / this.speedFactor).play();
             this.resume();
             return;
         }
 
-        // 逆再生
-        if (item.reverse) {
-            item.action.time = item.action.getClip().duration;
-            item.action.setEffectiveTimeScale(-1.5 * this.speedFactor);
-            this.#previouslyReversed = true;
-        } else {
-            item.action.setEffectiveTimeScale(1 * this.speedFactor);
-            this.#previouslyReversed = false;
-        }
         // 前のアクションからクロスフェードしつつ新しいアクションを再生する
         if (this.previousItem) {
-            if (item.action == this.previousItem.action) {
+            if (item.action === this.previousItem.action) {
                 switch (REPEAT_TYPE_MAP[item.char]) {
-                    case RepetitionTypes.Repeat:
-                    case RepetitionTypes.RepeatF:
-                        item.action.paused = false;
-                        item.action.play();
-                        break;
                     case RepetitionTypes.SnapXMinus:
                     case RepetitionTypes.SnapXPlus:
                     case RepetitionTypes.SnapY:
@@ -202,17 +184,20 @@ export class Player extends EventTarget {
                         item.action.reset().play();
                         break;
                     default:
-                        return;
+                        item.action.reset().play();
+                        break;
                 }
             } else {
-                this.previousItem.action.crossFadeTo(item.action.reset(), TIME_CROSS_FADE, false).play();
+                this.previousItem.action.crossFadeTo(item.action.reset(), TIME_CROSS_FADE / this.speedFactor, false).play();
             }
         } else {
-            item.action.reset().fadeIn(TIME_CROSS_FADE).play();
+            item.action.reset().fadeIn(TIME_CROSS_FADE / this.speedFactor).play();
         }
         this.previousItem = item;
         this.isPlaying = true;
     }
+
+    #lastEnqueuedItem = null;
 
     /**
      * 単語をキューに追加して再生する
@@ -223,16 +208,16 @@ export class Player extends EventTarget {
 
         for (let i = 0; i < word.length; i++) {
             const char = word[i];
-            const prevChar = i > 0 ? word[i - 1] : this.previousItem?.char;
+            const prevChar = i > 0 ? word[i - 1] : this.#lastEnqueuedItem?.char;
 
             const item = {
                 action: null,
                 char: char,
-                reverse: false,
-                simultaneous: false
+                simultaneous: false,
+                clone: false
             };
 
-            item.action = this.actions[char];
+            item.action = this.actions.get(char);
 
             if (item.action) {
                 // 同じ文字が連続する場合
@@ -240,25 +225,36 @@ export class Player extends EventTarget {
                     const decorator = {
                         action: null,
                         char: null,
-                        reverse: false,
                         simultaneous: true
                     };
                     switch (REPEAT_TYPE_MAP[char]) {
                         case RepetitionTypes.Repeat:
                         case RepetitionTypes.RepeatF:
-                            this.queue.push({ ...item, reverse: true });
+                            if (!this.#lastEnqueuedItem?.clone) {
+                                let clone = this.actionsClone.get(char);
+                                if (!clone) {
+                                    const newClip = item.action.getClip().clone();
+                                    const newAction = this.mixer.clipAction(newClip);
+                                    newAction.setLoop(THREE.LoopOnce, 1);
+                                    newAction.clampWhenFinished = true;
+                                    this.actionsClone.set(char, newAction);
+                                    clone = newAction;
+                                }
+                                item.action = clone;
+                                item.clone = true;
+                            }
                             break;
                         case RepetitionTypes.SnapXMinus:
-                            decorator.action = this.actions['SnapX-'];
+                            decorator.action = this.actions.get('SnapX-');
                             break;
                         case RepetitionTypes.SnapXPlus:
-                            decorator.action = this.actions['SnapX+'];
+                            decorator.action = this.actions.get('SnapX+');
                             break;
                         case RepetitionTypes.SnapY:
-                            decorator.action = this.actions['SnapY'];
+                            decorator.action = this.actions.get('SnapY');
                             break;
                         case RepetitionTypes.SnapZ:
-                            decorator.action = this.actions['SnapZ'];
+                            decorator.action = this.actions.get('SnapZ');
                             break;
                         default:
                             break;
@@ -269,10 +265,11 @@ export class Player extends EventTarget {
                 }
 
                 this.queue.push(item);
+                this.#lastEnqueuedItem = item;
             }
         }
 
-        console.log(`キューに追加: ${word} (長さ: ${this.queue.length})`);
+        console.debug(`キューに追加: ${word} (長さ: ${this.queue.length})`);
 
         if (!this.isPlaying) {
             this.resume();
@@ -281,6 +278,7 @@ export class Player extends EventTarget {
 
     clearQueue() {
         this.queue.length = 0;
+        this.#lastEnqueuedItem = null;
         this.isPlaying = false;
     }
 
