@@ -157,14 +157,10 @@ export class Player extends EventTarget {
             return;
         }
 
-        console.log("Interval:", this.interval, "Speed factor:", this.speedFactor, "Playing action:", item.char, "Simultaneous:", item.simultaneous, "Clone:", item.clone);
-
         // インターバル
         if (this.interval > 0) {
             await sleep(this.interval * 1000);
         }
-
-        console.log("Speed factor:", this.speedFactor, "Playing action:", item.char, "Simultaneous:", item.simultaneous, "Clone:", item.clone);
 
         // 速度調整
         item.action.setEffectiveTimeScale(1 * this.speedFactor);
