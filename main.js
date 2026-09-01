@@ -449,7 +449,8 @@ function review(increment = true) {
 }
 
 function reset() {
-    state.currentWords.shuffle(); // 単語リストをシャッフルする
+    state.clearAnsweredWords(); // 回答済みの単語をリセットする
+    refreshCurrentWords(); // 現在の単語リストを更新する
     state.step = Steps.Init; // ステップを初期化する
     state.resetCounters();
     playerInstance.clearQueue(); // キューをクリアする
