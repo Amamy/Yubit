@@ -151,6 +151,7 @@ export class Player extends EventTarget {
 
     async resume() {
         const item = this.queue.shift();
+        const crossFadeTime = TIME_CROSS_FADE / this.speedFactor;
 
         if (!item) {
             this.isPlaying = false;
@@ -168,30 +169,30 @@ export class Player extends EventTarget {
         // 同時再生
         if (item.simultaneous) {
             item.action.blendMode = THREE.AdditiveAnimationBlendMode;
-            item.action.reset().fadeIn(TIME_CROSS_FADE / this.speedFactor).play();
+            item.action.reset().fadeIn(crossFadeTime).play();
             this.resume();
             return;
         }
 
         // 前のアクションからクロスフェードしつつ新しいアクションを再生する
         if (this.previousItem) {
-            if (item.action === this.previousItem.action) {
+            if (item.char === this.previousItem.char) {
                 switch (REPEAT_TYPE_MAP[item.char]) {
-                    case RepetitionTypes.SnapXMinus:
-                    case RepetitionTypes.SnapXPlus:
-                    case RepetitionTypes.SnapY:
-                    case RepetitionTypes.SnapZ:
-                        item.action.reset().play();
+                    case RepetitionTypes.Repeat:
+                        this.previousItem.action.crossFadeTo(item.action.reset(), crossFadeTime, false).play();
+                        break;
+                    case RepetitionTypes.RepeatF:
+                        this.previousItem.action.crossFadeTo(item.action.reset(), crossFadeTime * 0.5, false).play();
                         break;
                     default:
                         item.action.reset().play();
                         break;
                 }
             } else {
-                this.previousItem.action.crossFadeTo(item.action.reset(), TIME_CROSS_FADE / this.speedFactor, false).play();
+                this.previousItem.action.crossFadeTo(item.action.reset(), crossFadeTime, false).play();
             }
         } else {
-            item.action.reset().fadeIn(TIME_CROSS_FADE / this.speedFactor).play();
+            item.action.reset().fadeIn(crossFadeTime).play();
         }
         this.previousItem = item;
         this.isPlaying = true;
